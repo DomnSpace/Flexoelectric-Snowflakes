@@ -1,5 +1,4 @@
 <!doctype html>
-
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -12,7 +11,7 @@
     html, body { height:100%; margin:0; background:var(--bg); color:var(--fg); font:14px/1.2 Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
     #app { position:fixed; inset:0; display:grid; grid-template-columns: 1fr 360px; }
     #scene { position:relative; }
-    #pane { background:linear-gradient(180deg, #0d1218, #0b1015); border-left:1px solid #18202a; padding:10px 8px; overflow:auto; }
+    #pane { position: absolute; top: 10px; right: 10px; }
     .topbar { position:absolute; top:10px; left:10px; display:flex; gap:8px; z-index:10; }
     .btn { background:#15202b; color:#d7e7ff; border:1px solid #1e2b38; border-radius:10px; padding:8px 12px; cursor:pointer; user-select:none; box-shadow:0 0 0 1px #0a1016 inset; }
     .btn:hover { background:#192636; }
@@ -37,153 +36,131 @@
     <div class="logo">FlexoSnow v0.1</div>
   </div>
   <div id="pane"></div>
-</div><!-- Three.js & helpers --><script src="https://unpkg.com/three@0.124.0/build/three.min.js"></script><script src="https://unpkg.com/three@0.124.0/examples/js/controls/OrbitControls.js"></script><!-- Tweakpane --><script src="https://cdnjs.cloudflare.com/ajax/libs/tweakpane/3.1.0/tweakpane.min.js"></script><script>
+</div>
+<!-- Three.js & helpers --><script src="https://unpkg.com/three@0.124.0/build/three.min.js"></script>
+<script src="https://unpkg.com/three@0.124.0/examples/js/controls/OrbitControls.js"></script>
+<!-- dat.GUI --><script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.9/dat.gui.min.js"></script>
+<script>
+/*
+FlexoSnow - A 3D Flexoelectric Snowflake Simulation
+---------------------------------------------------
+This file contains a self-contained simulation of snowflake growth,
+incorporating flexoelectric effects.
+
+Controls:
+- Mouse: Orbit the camera.
+- Scroll: Zoom in and out.
+- Buttons: Play/Pause, Step, Reset, Randomize, Export PNG.
+- Keyboard:
+  - Space: Play/Pause
+  - R: Reset
+  - S: Step Simulation
+  - L: Toggle Camera Auto-Rotation
+
+The control pane on the right allows for real-time adjustment of all
+physical and visual parameters of the simulation.
+*/
 (() => {
-    const TAU = Math.PI*2;
+  const TAU = Math.PI*2;
   const rand = (a=1,b=0) => b + (a-b)*Math.random();
   const clamp = (x,lo,hi)=> Math.max(lo, Math.min(hi, x));
 
-  // ---------------- Viz scaling (new) ----------------
+  let frameCount = 0;
+  let fps = 0;
+  let lastFpsUpdate = 0;
+  let lastMeanKappa = 0;
+  let lastMeanDL = 0;
+
   const VIZ = {
-    scale: 3000,      // multiplies all lengths to show tiny meters at human scale
-    wiggleGain: 3e5,  // multiplies modal amplitude for visible wiggle (visual only)
+    scale: 3000,
+    wiggleGain: 3e5,
   };
 
-  // ---------------- Params ----------------
   const params = {
-    // Field (spherical angles)
-    E_mag: 1500, // V/m
-    E_theta: 45, // deg from +X toward +Y
-    E_phi: 10,   // deg from XY plane upwards
-
-    // Flexo + growth
-    mu_eff: 1e-6,      // C/m
-    S: 0.08,           // supersaturation
-    S0: 0.02,          // kinetic baseline
-    k0: 2e-5,          // tip length growth base (m/s)
-    alpha_E: 1e-4,     // E enhancement
-    alpha_P: 1e-2,     // flexo enhancement
-
-    // Plating (width growth)
-    k_plate: 6e-6, S_w: 0.012, beta_E: 0.4, beta_P: 0.6, beta_base: 0.1,
-    platingExtent: 0.35, // last fraction of arm length experiencing plating
-
-    // Branching
-    kappa_branch: 80,     // 1/m
-    ds_branch: 1e-4,      // m along arm between branches
-    branchScale: 0.55,    // branch length factor vs parent
-
-    // Wiggle dynamics (single mode)
-    omega: 12,  // Hz
-    zeta: 0.12,
-    gustSigma: 2e-8,
-    gustTau: 0.25,
-
-    // Geometry & time
-    armNodes: 24,
-    L0: 6e-4,   // initial length m
-    w0: 2.5e-5, // initial width m
-    dt: 0.016,
-    speed: 1.0,
-
-    // View
-    autoRotate: true,
-    grid: false,
-    seed: 1,
+    E_mag: 1500, E_theta: 45, E_phi: 10,
+    mu_eff: 1e-6, S: 0.08, S0: 0.02, k0: 2e-5, alpha_E: 1e-4, alpha_P: 1e-2,
+    k_plate: 6e-6, S_w: 0.012, beta_E: 0.4, beta_P: 0.6, beta_base: 0.1, platingExtent: 0.35,
+    kappa_branch: 80, ds_branch: 1e-4, branchScale: 0.55,
+    omega: 12, zeta: 0.12, gustSigma: 2e-8, gustTau: 0.25,
+    armNodes: 24, L0: 6e-4, w0: 2.5e-5, dt: 0.016, speed: 1.0,
+    autoRotate: true, grid: false, axes: false, wireframe: false, seed: 1,
   };
 
-  // Derived/const
-  const KAPPA_COEFF = 3000; // 1/m per modal amplitude (proxy)
-  const A_CLIP = 3e-7;      // m
-  const ADOT_CLIP = 2e-5;   // m/s
+  const KAPPA_COEFF = 3000;
+  const A_CLIP = 3e-7;
+  const ADOT_CLIP = 2e-5;
 
-  // ---------------- Scene ----------------
   const sceneEl = document.getElementById('scene');
   const hudEl = document.getElementById('hud');
   const renderer = new THREE.WebGLRenderer({antialias:true, alpha:false});
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(sceneEl.clientWidth, sceneEl.clientHeight);
-  renderer.setClearColor(0x0b1016, 1);
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.setClearColor(0x0c0f12, 1);
   sceneEl.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0x0b1016, 0.5, 4);
+  scene.fog = new THREE.Fog(0x0c0f12, 2, 5);
   const camera = new THREE.PerspectiveCamera(50, sceneEl.clientWidth/sceneEl.clientHeight, 0.001, 100);
   camera.position.set(0.8, 0.7, 1.2);
 
   const controls = new THREE.OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
-  controls.dampingFactor = 0.08;
-  controls.autoRotate = params.autoRotate;
-  controls.autoRotateSpeed = 0.4;
 
-  const light = new THREE.HemisphereLight(0xaed6ff, 0x0b1016, 0.9);
+  const light = new THREE.HemisphereLight(0xaed6ff, 0x0c0f12, 0.9);
   scene.add(light);
   const dir = new THREE.DirectionalLight(0xffffff, 0.8);
   dir.position.set(2,2,3);
   scene.add(dir);
 
-  // Field arrow helper
   const fieldArrow = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), new THREE.Vector3(0,0,0), 0.6, 0x66ccff, 0.02, 0.06);
   scene.add(fieldArrow);
 
-  // Ground grid (optional)
   const grid = new THREE.GridHelper(4, 20, 0x1e2b38, 0x0f1821);
   grid.visible = params.grid; scene.add(grid);
 
-  // Center plate (hexagonal prism)
+  const axes = new THREE.AxesHelper(1);
+  axes.visible = params.axes;
+  scene.add(axes);
+
   const center = new THREE.Mesh(
     new THREE.CylinderGeometry(0.06, 0.06, 0.02, 6),
     new THREE.MeshStandardMaterial({color:0x9fd0ff, metalness:0.2, roughness:0.4, transparent:true, opacity:0.55})
   );
   center.rotation.x = Math.PI*0.5;
-  // scale center to be visible at VIZ.scale
   center.scale.setScalar(0.0015 * VIZ.scale);
   scene.add(center);
 
-  // Snowflake group
   const flakeGroup = new THREE.Group();
   scene.add(flakeGroup);
 
-  // ---------------- Arm/Branch representation ----------------
-  const ARM_COUNT = 6;
-  const SEGMENTS = () => params.armNodes; // segments per arm
+  const branchMarkers = new THREE.Group();
+  scene.add(branchMarkers);
+  const markerData = [];
 
-  // Shared cylinder geometry for instances (unit length along Y)
+  const ARM_COUNT = 6;
+  const SEGMENTS = () => params.armNodes;
+
   const cylGeom = new THREE.CylinderGeometry(1,1,1, 10, 1, true);
-  cylGeom.translate(0, 0.5, 0); // base at y=0 to y=1
+  cylGeom.translate(0, 0.5, 0);
 
   const armMaterial = new THREE.MeshStandardMaterial({
-    color:0xcfe9ff,
-    emissive:0x001018,
-    metalness:0.15,
-    roughness:0.35,
-    transparent:true,
-    opacity:0.75,
-    side:THREE.DoubleSide,
+    color:0xcfe9ff, emissive:0x001018, metalness:0.15, roughness:0.35,
+    transparent:true, opacity:0.75, side:THREE.DoubleSide, vertexColors: true,
   });
 
-  // Arm data structure
   function makeArm(baseAngle){
     const nodes = new Array(SEGMENTS()+1).fill(0).map((_,i)=>({
-      s: i/(SEGMENTS()), // 0..1 arclength fraction
-      pos: new THREE.Vector3(),
-      w: params.w0,
+      s: i/(SEGMENTS()), pos: new THREE.Vector3(), w: params.w0,
     }));
-    const branches = []; // {s0, normal(+/-1), length, nodes:[...], scale}
     return {
-      baseAngle, // radians around Z
-      A: 0, Adot: 0, // modal state
-      nodes, branches,
+      baseAngle, A: 0, Adot: 0, P: 0,
+      nodes, branches: [],
       inst: new THREE.InstancedMesh(cylGeom, armMaterial, SEGMENTS()),
     };
   }
 
   let arms = [];
-
   function resetArms(){
-    // Clear previous
     for (const a of arms){ flakeGroup.remove(a.inst); a.inst.geometry.dispose?.(); }
     arms = [];
     for(let k=0;k<ARM_COUNT;k++){
@@ -193,299 +170,219 @@
     }
   }
 
-  // ---------------- Utilities ----------------
   function EVector(){
     const th = params.E_theta * Math.PI/180;
     const ph = params.E_phi * Math.PI/180;
-    const x = Math.cos(th)*Math.cos(ph);
-    const y = Math.sin(th)*Math.cos(ph);
-    const z = Math.sin(ph);
-    return new THREE.Vector3(x,y,z).multiplyScalar(params.E_mag);
+    return new THREE.Vector3(Math.cos(th)*Math.cos(ph), Math.sin(th)*Math.cos(ph), Math.sin(ph)).multiplyScalar(params.E_mag);
   }
 
   function updateFieldArrow(){
-    const e = EVector().clone().normalize();
-    fieldArrow.setDirection(e);
-    fieldArrow.setLength(0.6, 0.06, 0.12);
+    fieldArrow.setDirection(EVector().clone().normalize());
   }
 
+  const seedObj = {v: 1};
   function randn(seedObj){
-    // Simple LCG-based normal using Box-Muller
     let s = seedObj.v = (1664525*seedObj.v + 1013904223) >>> 0;
     const u1 = (s & 0xffff)/0x10000; s = seedObj.v = (1664525*seedObj.v + 1013904223) >>> 0;
     const u2 = (s & 0xffff)/0x10000;
-    const R = Math.sqrt(-2*Math.log(Math.max(1e-9,u1)));
-    const th = TAU*u2;
-    return R*Math.cos(th);
+    return Math.sqrt(-2*Math.log(Math.max(1e-9,u1))) * Math.cos(TAU*u2);
   }
 
-  // ---------------- Simulation core ----------------
-  const seedObj = {v: Math.max(1, params.seed|0)};
   let running = true;
-
   function resetState(){
     seedObj.v = Math.max(1, params.seed|0);
     resetArms();
     for (const arm of arms){
-      // Initialize straight nodes along base direction
       const L = params.L0;
+      const r = new THREE.Vector3(Math.cos(arm.baseAngle), Math.sin(arm.baseAngle), 0);
       for (let i=0;i<arm.nodes.length;i++){
-        const s = i/(arm.nodes.length-1);
-        const r = new THREE.Vector3(Math.cos(arm.baseAngle), Math.sin(arm.baseAngle), 0);
-        arm.nodes[i].pos.copy(r.clone().multiplyScalar(s*L));
+        arm.nodes[i].pos.copy(r.clone().multiplyScalar(i/(arm.nodes.length-1)*L));
         arm.nodes[i].w = params.w0;
       }
-      arm.A = 0; arm.Adot = 0;
+      arm.A = 0; arm.Adot = 0; arm.P = 0;
     }
     updateMeshes(true);
   }
 
-  function tipCurvature(arm){
-    // Proxy via modal amplitude
-    return KAPPA_COEFF * arm.A; // 1/m
-  }
+  const tipCurvature = (arm) => KAPPA_COEFF * arm.A;
 
   function step(dt){
     const E = EVector();
-    // Modal oscillator per arm + growth
     let totalDip = new THREE.Vector3();
-    let meanKappa=0, meanDL=0, branchCount=0;
+    let meanKappa=0, meanDL=0;
 
     for (const arm of arms){
-      // OU gust as acceleration input
       const gust = params.gustSigma * Math.sqrt(2*dt/Math.max(1e-6, params.gustTau)) * randn(seedObj);
-      // A¨ + 2ζω A˙ + ω² A = gust
-      const omega = params.omega * TAU; // rad/s
+      const omega = params.omega * TAU;
       const A_ddot = gust - 2*params.zeta*omega*arm.Adot - (omega*omega)*arm.A;
       arm.Adot = clamp(arm.Adot + A_ddot*dt, -ADOT_CLIP, ADOT_CLIP);
       arm.A    = clamp(arm.A + arm.Adot*dt,  -A_CLIP,   A_CLIP);
 
-      // Curvature & flexo polarization
       const kappa = tipCurvature(arm);
-      const P = params.mu_eff * kappa; // C/m
+      const P = params.mu_eff * kappa;
+      arm.P = P;
 
-      // Tip dipole magnitude ~ |P| * area * lever
-      const tipArea = (60e-6*60e-6);
-      const lever = 0.4e-3;
-      const pMag = Math.abs(P) * tipArea * lever;
       const armDir = new THREE.Vector3(Math.cos(arm.baseAngle), Math.sin(arm.baseAngle), 0);
-      const pVec = armDir.clone().multiplyScalar(pMag);
-      totalDip.add(pVec);
+      totalDip.add(armDir.clone().multiplyScalar(Math.abs(P) * (60e-6*60e-6) * 0.4e-3));
 
-      // Growth laws
       const Sstar = params.S0 + 4.5e-6*Math.abs(kappa);
       const E_local = E.dot(armDir);
       const Phi = Math.max(0, 1 + params.alpha_E*Math.abs(E_local)/1000 + params.alpha_P*Math.abs(P));
       const dL = Math.max(0, params.k0*(params.S - Sstar)) * Phi * dt * params.speed;
       meanDL += dL;
+      if (dL>0) arm.nodes[arm.nodes.length-1].pos.add(armDir.clone().multiplyScalar(dL));
 
-      // Extend nodes by distributing dL to last segment
-      if (dL>0){
-        const last = arm.nodes.length-1;
-        arm.nodes[last].pos.add(armDir.clone().multiplyScalar(dL));
-      }
-
-      // Plating (increase width on outer fraction)
-      const plateMaskStart = 1 - params.platingExtent;
       for (let i=0;i<arm.nodes.length;i++){
         const s = i/(arm.nodes.length-1);
-        const mask = (s>=plateMaskStart)?1:0;
-        const dW = Math.max(0, params.k_plate*(params.S - params.S_w)) * (params.beta_base + params.beta_E*Math.abs(E_local)/1000 + params.beta_P*Math.abs(P)) * dt * params.speed;
-        if (mask>0) arm.nodes[i].w = Math.max(params.w0*0.5, Math.min(params.w0*3.0, arm.nodes[i].w + dW));
-      }
-
-      // Branching
-      if (Math.abs(kappa) > params.kappa_branch){
-        const lastNode = arm.nodes[arm.nodes.length-1];
-        const lastBranchS = arm.branches.length? arm.branches[arm.branches.length-1].s0 : 0;
-        const currentS = 1; // tip
-        // ensure spacing along arclength (approx by ds_branch)
-        const Lcur = arm.nodes[arm.nodes.length-1].pos.length();
-        const Lprev = lastBranchS * params.L0; // crude baseline spacing reference
-        if (Lcur - Lprev > params.ds_branch){
-          const normalSign = (Math.random()<0.5)? +1 : -1;
-          const bLen = params.branchScale * params.L0 * 0.25; // short branch
-          const branch = {
-            s0: currentS,
-            normal: normalSign,
-            length: bLen,
-            nodes: [
-              lastNode.pos.clone(),
-              lastNode.pos.clone().add(new THREE.Vector3(-armDir.y, armDir.x, 0).multiplyScalar(normalSign*bLen))
-            ]
-          };
-          arm.branches.push(branch);
-          branchCount++;
+        if(s >= 1-params.platingExtent){
+          const dW = Math.max(0, params.k_plate*(params.S - params.S_w)) * (params.beta_base + params.beta_E*Math.abs(E_local)/1000 + params.beta_P*Math.abs(P)) * dt * params.speed;
+          arm.nodes[i].w = Math.max(params.w0*0.5, Math.min(params.w0*3.0, arm.nodes[i].w + dW));
         }
       }
 
+      if (Math.abs(kappa) > params.kappa_branch){
+        const lastNode = arm.nodes[arm.nodes.length-1];
+        const lastBranchS = arm.branches.length? arm.branches[arm.branches.length-1].s0 : 0;
+        if (lastNode.pos.length() - lastBranchS*params.L0 > params.ds_branch){
+          const normalSign = (Math.random()<0.5)? +1 : -1;
+          const bLen = params.branchScale * params.L0 * 0.25;
+          arm.branches.push({
+            s0: 1, normal: normalSign, length: bLen,
+            nodes: [ lastNode.pos.clone(), lastNode.pos.clone().add(new THREE.Vector3(-armDir.y, armDir.x, 0).multiplyScalar(normalSign*bLen)) ]
+          });
+          const marker = new THREE.Mesh(new THREE.SphereGeometry(0.01, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true }));
+          marker.position.copy(lastNode.pos).multiplyScalar(VIZ.scale);
+          branchMarkers.add(marker);
+          markerData.push({ mesh: marker, time: 0 });
+        }
+      }
       meanKappa += Math.abs(kappa);
 
-      // Wiggle geometry: apply lateral deflection (visual gain)
       for (let i=1;i<arm.nodes.length;i++){
         const s = i/(arm.nodes.length-1);
         const baseVec = arm.nodes[i].pos.clone().sub(arm.nodes[i-1].pos);
         const segLen = baseVec.length();
         const dir = baseVec.normalize();
-        const armDir = new THREE.Vector3(Math.cos(arm.baseAngle), Math.sin(arm.baseAngle), 0);
         const normal = new THREE.Vector3(-armDir.y, armDir.x, 0).normalize();
-        const wobbleAmp = arm.A * VIZ.wiggleGain; // amplified for visibility
+        const wobbleAmp = arm.A * VIZ.wiggleGain;
         const wobble = normal.clone().multiplyScalar(wobbleAmp * Math.sin(6*s*TAU + 0.7));
         arm.nodes[i].pos.copy(arm.nodes[i-1].pos.clone().add(dir.multiplyScalar(segLen)).add(wobble));
       }
     }
-
-    // Orientation (overdamped) from electric torque
-    const Tz = new THREE.Vector3().crossVectors(totalDip, E).z; // about Z (simplified)
-    const dYaw = clamp((Tz/1.e-10) * dt * 0.5, -0.01, 0.01);
-    flakeGroup.rotation.z += dYaw;
-
+    const Tz = new THREE.Vector3().crossVectors(totalDip, E).z;
+    flakeGroup.rotation.z += clamp((Tz/1.6e-10) * dt * 0.5, -0.01, 0.01);
     updateMeshes(false);
-
-    // HUD
-    const avgK = (meanKappa/arms.length).toFixed(2);
-    const avgDL = (meanDL/arms.length/dt).toExponential(2);
-    hudEl.textContent = `E=${params.E_mag.toFixed(0)} V/m  |  avg|κ_tip|=${avgK}  |  growth≈${avgDL} m/s  |  branches=${arms.reduce((a,b)=>a+b.branches.length,0)}`;
+    lastMeanKappa = meanKappa;
+    lastMeanDL = meanDL;
   }
 
-  // Build/update instanced meshes per arm
-  const tmpMat = new THREE.Matrix4();
-  const tmpQuat = new THREE.Quaternion();
-  const tmpScale = new THREE.Vector3();
-
+  const tmpMat = new THREE.Matrix4(), tmpQuat = new THREE.Quaternion(), tmpScale = new THREE.Vector3();
   function updateMeshes(forceRebuild){
     for (const arm of arms){
       const count = SEGMENTS();
       if (forceRebuild && arm.inst.count !== count){
-        // Replace instanced mesh with correct count
         flakeGroup.remove(arm.inst);
         arm.inst = new THREE.InstancedMesh(cylGeom, armMaterial, count);
         flakeGroup.add(arm.inst);
       }
-      // Build each segment transform in *visual* units
+      const P_abs = Math.abs(arm.P || 0);
+      const lerpFactor = clamp(P_abs / 5e-10, 0, 1);
+      const tipColor = new THREE.Color(0xcfe9ff).lerp(new THREE.Color(0xffffff), lerpFactor);
+      const baseColor = new THREE.Color(0xcfe9ff);
+
       for (let i=0;i<count;i++){
         const p0 = arm.nodes[i].pos.clone().multiplyScalar(VIZ.scale);
         const p1 = arm.nodes[i+1].pos.clone().multiplyScalar(VIZ.scale);
-        const seg = new THREE.Vector3().subVectors(p1,p0);
-        const len = Math.max(1e-9, seg.length());
-        const centerPos = p0.clone();
-
-        // orientation: up (0,1,0) → dir (seg normalized)
-        const dir = seg.clone().normalize();
-        const up = new THREE.Vector3(0,1,0);
-        tmpQuat.setFromUnitVectors(up, dir);
-
-        // radius from node width; blend and scale visually
-        const r0 = arm.nodes[i].w * 0.5 * VIZ.scale;
-        const r1 = arm.nodes[i+1].w * 0.5 * VIZ.scale;
-        const r = (r0 + r1)*0.5;
-
-        tmpMat.identity();
-        tmpMat.makeRotationFromQuaternion(tmpQuat);
-        tmpScale.set(r, len, r);
-        tmpMat.scale(tmpScale);
-        tmpMat.setPosition(centerPos);
+        const seg = p1.clone().sub(p0);
+        tmpQuat.setFromUnitVectors(new THREE.Vector3(0,1,0), seg.clone().normalize());
+        const r = (arm.nodes[i].w + arm.nodes[i+1].w) * 0.25 * VIZ.scale;
+        tmpMat.identity().compose(p0, tmpQuat, new THREE.Vector3(r, seg.length(), r));
         arm.inst.setMatrixAt(i, tmpMat);
+        arm.inst.setColorAt(i, i>=count-3 ? tipColor : baseColor);
       }
       arm.inst.instanceMatrix.needsUpdate = true;
+      arm.inst.instanceColor.needsUpdate = true;
     }
   }
 
-  // ---------------- Pane (controls) ----------------
-  const pane = new Tweakpane({ container: document.getElementById('pane') });
-  const fViz = pane.addFolder({title:'Visualization', expanded:true});
-  fViz.addInput(VIZ, 'scale', {min:500, max:10000, step:100}).on('change', ()=>{ center.scale.setScalar(0.0015*VIZ.scale); updateMeshes(true); });
-  fViz.addInput(VIZ, 'wiggleGain', {min:1e3, max:1e6});
+  const gui = new dat.GUI({ autoPlace: false });
+  const paneEl = document.getElementById('pane');
+  paneEl.appendChild(gui.domElement);
+  Object.assign(paneEl.firstChild.style, {position:'absolute', right:'10px', top:'10px', width:'340px'});
 
-  const fField = pane.addFolder({title:'Field', expanded:true});
-  fField.addInput(params, 'E_mag', {min:0, max:5000, step:10}).on('change', updateFieldArrow);
-  fField.addInput(params, 'E_theta', {min:0, max:180, step:1}).on('change', updateFieldArrow);
-  fField.addInput(params, 'E_phi', {min:-90, max:90, step:1}).on('change', updateFieldArrow);
+  const fViz = gui.addFolder('Visualization');
+  fViz.add(VIZ, 'scale', 500, 10000, 100).onChange(()=>{ center.scale.setScalar(0.0015*VIZ.scale); updateMeshes(true); });
+  fViz.add(VIZ, 'wiggleGain', 1e3, 1e6);
+  fViz.add(params, 'axes').onChange((v)=>axes.visible=v);
+  fViz.add(params, 'wireframe').onChange((v)=>armMaterial.wireframe=v);
+  fViz.open();
 
-  const fFlexo = pane.addFolder({title:'Flexo & Growth', expanded:false});
-  fFlexo.addInput(params, 'mu_eff', {min:0, max:5e-6});
-  fFlexo.addInput(params, 'S', {min:0, max:0.2});
-  fFlexo.addInput(params, 'S0', {min:0, max:0.1});
-  fFlexo.addInput(params, 'k0', {min:0, max:1e-4});
-  fFlexo.addInput(params, 'alpha_E', {min:0, max:5e-4});
-  fFlexo.addInput(params, 'alpha_P', {min:0, max:5e-2});
+  const fField = gui.addFolder('Field');
+  fField.add(params, 'E_mag', 0, 5000, 10).onChange(updateFieldArrow);
+  fField.add(params, 'E_theta', 0, 180, 1).onChange(updateFieldArrow);
+  fField.add(params, 'E_phi', -90, 90, 1).onChange(updateFieldArrow);
+  fField.open();
 
-  const fPlate = pane.addFolder({title:'Plating (width growth)', expanded:false});
-  fPlate.addInput(params, 'k_plate', {min:0, max:2e-5});
-  fPlate.addInput(params, 'S_w', {min:0, max:0.1});
-  fPlate.addInput(params, 'beta_E', {min:0, max:2});
-  fPlate.addInput(params, 'beta_P', {min:0, max:2});
-  fPlate.addInput(params, 'beta_base', {min:0, max:1});
-  fPlate.addInput(params, 'platingExtent', {min:0, max:0.9});
+  const fFlexo = gui.addFolder('Flexo & Growth');
+  fFlexo.add(params, 'mu_eff', 0, 5e-6);
+  fFlexo.add(params, 'S', 0, 0.2);
+  fFlexo.add(params, 'k0', 0, 1e-4);
 
-  const fBranch = pane.addFolder({title:'Branching', expanded:false});
-  fBranch.addInput(params, 'kappa_branch', {min:0, max:400});
-  fBranch.addInput(params, 'ds_branch', {min:0, max:6e-4});
-  fBranch.addInput(params, 'branchScale', {min:0.2, max:1.0});
+  const fGeom = gui.addFolder('Geometry & Time');
+  fGeom.add(params, 'armNodes', 6, 48, 1).onChange(resetState);
+  fGeom.add(params, 'speed', 0.1, 4);
+  fGeom.add(params, 'autoRotate').onChange((v)=>controls.autoRotate=v);
+  fGeom.add(params, 'grid').onChange((v)=>grid.visible=v);
 
-  const fWiggle = pane.addFolder({title:'Wiggle', expanded:false});
-  fWiggle.addInput(params, 'omega', {min:1, max:30});
-  fWiggle.addInput(params, 'zeta', {min:0, max:0.5});
-  fWiggle.addInput(params, 'gustSigma', {min:0, max:1e-6});
-  fWiggle.addInput(params, 'gustTau', {min:0.05, max:1.0});
-
-  const fGeom = pane.addFolder({title:'Geometry & Time', expanded:false});
-  fGeom.addInput(params, 'armNodes', {min:6, max:48, step:1}).on('change', ()=>{ resetState(); });
-  fGeom.addInput(params, 'L0', {min:1e-4, max:2e-3}).on('change', ()=>{ resetState(); });
-  fGeom.addInput(params, 'w0', {min:5e-6, max:6e-5}).on('change', ()=>{ resetState(); });
-  fGeom.addInput(params, 'dt', {min:0.008, max:0.033, step:0.001});
-  fGeom.addInput(params, 'speed', {min:0.1, max:4});
-  fGeom.addInput(params, 'autoRotate');
-  fGeom.addInput(params, 'grid').on('change', ()=>{ grid.visible = params.grid; });
-  fGeom.addInput(params, 'seed', {min:1, max:9999, step:1});
-
-  // Buttons
   document.getElementById('play').onclick = ()=> running = true;
   document.getElementById('pause').onclick = ()=> running = false;
   document.getElementById('step').onclick = ()=> { running = false; step(params.dt); render(); };
-  document.getElementById('reset').onclick = ()=> { resetState(); };
+  document.getElementById('reset').onclick = ()=> resetState();
   document.getElementById('randomize').onclick = ()=> { params.seed = (1 + Math.random()*9999)|0; resetState(); };
-  document.getElementById('exportPNG').onclick = ()=> {
-    renderer.render(scene, camera);
-    const a = document.createElement('a');
-    a.download = 'flexo_snowflake.png';
-    a.href = renderer.domElement.toDataURL('image/png');
-    a.click();
-  };
+  document.getElementById('exportPNG').onclick = ()=> { renderer.render(scene, camera); const a = document.createElement('a'); a.download = 'flexo_snowflake.png'; a.href = renderer.domElement.toDataURL('image/png'); a.click(); };
 
-  // Resize
-  addEventListener('resize', ()=>{
-    renderer.setSize(sceneEl.clientWidth, sceneEl.clientHeight);
-    camera.aspect = sceneEl.clientWidth/sceneEl.clientHeight;
-    camera.updateProjectionMatrix();
-  });
+  addEventListener('resize', ()=>{ renderer.setSize(sceneEl.clientWidth, sceneEl.clientHeight); camera.aspect = sceneEl.clientWidth/sceneEl.clientHeight; camera.updateProjectionMatrix(); });
+  addEventListener('keydown', (e)=>{ if (e.code === 'Space') running = !running; else if (e.code === 'KeyR') resetState(); else if (e.code === 'KeyS') { running = false; step(params.dt); render(); } else if (e.code === 'KeyL') params.autoRotate = !params.autoRotate; });
 
-  // Kickoff
   updateFieldArrow();
   resetState();
 
-    // Main loop
   let tPrev = performance.now();
   function tick(){
-    requestAnimationFrame(tick);
     const tNow = performance.now();
     let dt = (tNow - tPrev)/1000;
     tPrev = tNow;
     dt = Math.min(0.05, dt);
 
-    controls.autoRotate = params.autoRotate;
-    controls.update();
-
     if (running){
       const substeps = Math.max(1, Math.floor(params.speed));
-      const h = params.dt / substeps;
-      for (let i=0;i<substeps;i++) step(h);
+      for (let i=0;i<substeps;i++) step(params.dt / substeps);
     }
 
-    render();
-  }
+    for (let i = markerData.length - 1; i >= 0; i--) {
+      markerData[i].time += dt;
+      if (markerData[i].time > 1.5) {
+        branchMarkers.remove(markerData[i].mesh);
+        markerData[i].mesh.geometry.dispose();
+        markerData[i].mesh.material.dispose();
+        markerData.splice(i, 1);
+      } else {
+        markerData[i].mesh.material.opacity = 1.0 - (markerData[i].time / 1.5);
+      }
+    }
 
-  function render(){ renderer.render(scene, camera); }
+    frameCount++;
+    if (tNow > lastFpsUpdate + 1000) {
+      fps = frameCount; frameCount = 0; lastFpsUpdate = tNow;
+    }
+    const avgK = (lastMeanKappa / (arms.length||1)).toFixed(2);
+    const avgDL = (lastMeanDL / (arms.length||1) / (params.dt || 0.016)).toExponential(2);
+    hudEl.textContent = `FPS: ${fps} | E=${params.E_mag.toFixed(0)} V/m  |  avg|κ_tip|=${avgK}  |  growth≈${avgDL} m/s  |  branches=${arms.reduce((a,b)=>a+b.branches.length,0)}`;
+
+    controls.update();
+    renderer.render(scene, camera);
+    requestAnimationFrame(tick);
+  }
   tick();
 })();
 </script>
