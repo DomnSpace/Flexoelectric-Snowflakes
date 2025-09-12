@@ -31,6 +31,7 @@
       <div class="btn" id="reset">⟲ Reset</div>
       <div class="btn" id="randomize">🎲 Randomize</div>
       <div class="btn" id="exportPNG">🖼 Export PNG</div>
+      <div class="btn" id="exportCSV">📈 Export CSV</div>
     </div>
     <div class="hud" id="hud">—</div>
     <div class="logo">FlexoSnow v0.1</div>
@@ -70,6 +71,9 @@ physical and visual parameters of the simulation.
   let lastFpsUpdate = 0;
   let lastMeanKappa = 0;
   let lastMeanDL = 0;
+  let simTime = 0;
+  let lastDataPushTime = 0;
+  const timeSeriesData = [];
 
   const VIZ = {
     scale: 3000,
@@ -77,12 +81,31 @@ physical and visual parameters of the simulation.
   };
 
   const params = {
+    // Microphysics
+    T: -15.0,
+    alpha_basal: 0.01,
+    alpha_prism: 0.08,
+    qllBoost: false,
+    D: 2.2e-5,
+    fall_speed: 0.5,
+    lab_needle_mode: false,
+
+    // Field
     E_mag: 1500, E_theta: 45, E_phi: 10,
-    mu_eff: 1e-6, S: 0.08, S0: 0.02, k0: 2e-5, alpha_E: 1e-4, alpha_P: 1e-2,
-    k_plate: 6e-6, S_w: 0.012, beta_E: 0.4, beta_P: 0.6, beta_base: 0.1, platingExtent: 0.35,
+
+    // Flexo & Growth
+    mu_eff: 1e-6, S: 0.08,
+
+    // Branching
     kappa_branch: 80, ds_branch: 1e-4, branchScale: 0.55,
+
+    // Wiggle
     omega: 12, zeta: 0.12, gustSigma: 2e-8, gustTau: 0.25,
+
+    // Geometry & Time
     armNodes: 24, L0: 6e-4, w0: 2.5e-5, dt: 0.016, speed: 1.0,
+
+    // View
     autoRotate: true, grid: false, axes: false, wireframe: false, seed: 1,
   };
 
@@ -117,7 +140,7 @@ physical and visual parameters of the simulation.
 
   const grid = new THREE.GridHelper(4, 20, 0x1e2b38, 0x0f1821);
   grid.visible = params.grid; scene.add(grid);
-
+  
   const axes = new THREE.AxesHelper(1);
   axes.visible = params.axes;
   scene.add(axes);
@@ -150,22 +173,24 @@ physical and visual parameters of the simulation.
 
   function makeArm(baseAngle){
     const nodes = new Array(SEGMENTS()+1).fill(0).map((_,i)=>({
-      s: i/(SEGMENTS()), pos: new THREE.Vector3(), w: params.w0,
+      s: i/(SEGMENTS()), pos: new THREE.Vector3(), w: params.w0, thickness: params.w0,
     }));
+    const geom = new THREE.BufferGeometry();
+    const mesh = new THREE.Mesh(geom, armMaterial);
     return {
       baseAngle, A: 0, Adot: 0, P: 0,
       nodes, branches: [],
-      inst: new THREE.InstancedMesh(cylGeom, armMaterial, SEGMENTS()),
+      mesh: mesh,
     };
   }
 
   let arms = [];
   function resetArms(){
-    for (const a of arms){ flakeGroup.remove(a.inst); a.inst.geometry.dispose?.(); }
+    for (const a of arms){ flakeGroup.remove(a.mesh); a.mesh.geometry.dispose?.(); }
     arms = [];
     for(let k=0;k<ARM_COUNT;k++){
       const a = makeArm((TAU/ARM_COUNT)*k);
-      flakeGroup.add(a.inst);
+      flakeGroup.add(a.mesh);
       arms.push(a);
     }
   }
@@ -180,6 +205,27 @@ physical and visual parameters of the simulation.
     fieldArrow.setDirection(EVector().clone().normalize());
   }
 
+  function updateNakaya() {
+    const T = params.T;
+    if (T > -4) { // Plates
+      params.alpha_prism = 0.08;
+      params.alpha_basal = 0.01;
+    } else if (T > -10) { // Columns
+      params.alpha_prism = 0.01;
+      params.alpha_basal = 0.06;
+    } else if (T > -25) { // Plates
+      params.alpha_prism = 0.08;
+      params.alpha_basal = 0.01;
+    } else { // Columns
+      params.alpha_prism = 0.01;
+      params.alpha_basal = 0.06;
+    }
+    // Update GUI
+    for (const i in gui.__folders['Thermo & Kinetics'].__controllers) {
+      gui.__folders['Thermo & Kinetics'].__controllers[i].updateDisplay();
+    }
+  }
+
   const seedObj = {v: 1};
   function randn(seedObj){
     let s = seedObj.v = (1664525*seedObj.v + 1013904223) >>> 0;
@@ -190,6 +236,9 @@ physical and visual parameters of the simulation.
 
   let running = true;
   function resetState(){
+    timeSeriesData.length = 0;
+    simTime = 0;
+    lastDataPushTime = 0;
     seedObj.v = Math.max(1, params.seed|0);
     resetArms();
     for (const arm of arms){
@@ -225,19 +274,37 @@ physical and visual parameters of the simulation.
       const armDir = new THREE.Vector3(Math.cos(arm.baseAngle), Math.sin(arm.baseAngle), 0);
       totalDip.add(armDir.clone().multiplyScalar(Math.abs(P) * (60e-6*60e-6) * 0.4e-3));
 
-      const Sstar = params.S0 + 4.5e-6*Math.abs(kappa);
-      const E_local = E.dot(armDir);
-      const Phi = Math.max(0, 1 + params.alpha_E*Math.abs(E_local)/1000 + params.alpha_P*Math.abs(P));
-      const dL = Math.max(0, params.k0*(params.S - Sstar)) * Phi * dt * params.speed;
-      meanDL += dL;
-      if (dL>0) arm.nodes[arm.nodes.length-1].pos.add(armDir.clone().multiplyScalar(dL));
+      // --- Full Microphysics Growth Law ---
+      const kB = 1.38e-23; 
+      const m = 2.99e-26;
+      const Sc = 0.7;
 
-      for (let i=0;i<arm.nodes.length;i++){
-        const s = i/(arm.nodes.length-1);
-        if(s >= 1-params.platingExtent){
-          const dW = Math.max(0, params.k_plate*(params.S - params.S_w)) * (params.beta_base + params.beta_E*Math.abs(E_local)/1000 + params.beta_P*Math.abs(P)) * dt * params.speed;
-          arm.nodes[i].w = Math.max(params.w0*0.5, Math.min(params.w0*3.0, arm.nodes[i].w + dW));
-        }
+      const T_kelvin = params.T + 273.15;
+      const v_kin = Math.sqrt(kB * T_kelvin / (2 * Math.PI * m));
+      
+      const L_arm = arm.nodes[arm.nodes.length-1].pos.length();
+      const Re = params.fall_speed * L_arm / 1.5e-5;
+      const Sh = 2 + 0.6 * Math.sqrt(Re) * Math.cbrt(Sc);
+      
+      const alpha_diff = (params.D * Sh) / ((L_arm || 1e-6) * v_kin);
+
+      const E_local = E.dot(armDir);
+      let flexo_bias = (1 + 1e-4*Math.abs(E_local)/1000 + 1e-2*Math.abs(P));
+      if(params.lab_needle_mode && params.E_mag > 2000) flexo_bias *= 5.0;
+
+      const alpha_basal = params.alpha_basal * (params.qllBoost ? 2.0 : 1.0);
+      const v_basal = (alpha_basal * v_kin) / (alpha_basal + alpha_diff) * params.S * flexo_bias;
+      const dL = v_basal * dt * params.speed * 1e3;
+      meanDL += dL;
+      if (dL > 0) arm.nodes[arm.nodes.length-1].pos.add(armDir.clone().multiplyScalar(dL));
+
+      const alpha_prism = params.alpha_prism * (params.qllBoost ? 2.0 : 1.0);
+      const v_prism = (alpha_prism * v_kin) / (alpha_prism + alpha_diff) * params.S * flexo_bias;
+      const dW = v_prism * dt * params.speed * 1e3;
+      
+      for (let i = 0; i < arm.nodes.length; i++) {
+        arm.nodes[i].w = Math.max(params.w0 * 0.5, Math.min(params.w0 * 3.0, arm.nodes[i].w + dW));
+        arm.nodes[i].thickness = Math.max(params.w0 * 0.5, Math.min(params.w0 * 3.0, arm.nodes[i].thickness + dL*0.1));
       }
 
       if (Math.abs(kappa) > params.kappa_branch){
@@ -274,34 +341,85 @@ physical and visual parameters of the simulation.
     updateMeshes(false);
     lastMeanKappa = meanKappa;
     lastMeanDL = meanDL;
+
+    simTime += dt;
+    if (simTime > lastDataPushTime + 0.1) {
+      lastDataPushTime = simTime;
+      let totalLength = 0, totalWidth = 0, totalSegments = 0, totalP = 0;
+      for (const arm of arms) {
+        let armLength = 0;
+        for (let i = 1; i < arm.nodes.length; i++) {
+          armLength += arm.nodes[i].pos.distanceTo(arm.nodes[i-1].pos);
+        }
+        totalLength += armLength;
+        for (let i = 0; i < arm.nodes.length; i++) {
+          totalWidth += arm.nodes[i].w;
+        }
+        totalSegments += arm.nodes.length;
+        totalP += Math.abs(arm.P || 0);
+      }
+      const branchCount = arms.reduce((a,b)=>a+b.branches.length,0);
+      timeSeriesData.push({
+        time: simTime,
+        avg_length: totalLength / (arms.length || 1),
+        avg_width: totalWidth / (totalSegments || 1),
+        branch_count: branchCount,
+        mean_P: totalP / (arms.length || 1),
+      });
+    }
   }
 
-  const tmpMat = new THREE.Matrix4(), tmpQuat = new THREE.Quaternion(), tmpScale = new THREE.Vector3();
-  function updateMeshes(forceRebuild){
-    for (const arm of arms){
-      const count = SEGMENTS();
-      if (forceRebuild && arm.inst.count !== count){
-        flakeGroup.remove(arm.inst);
-        arm.inst = new THREE.InstancedMesh(cylGeom, armMaterial, count);
-        flakeGroup.add(arm.inst);
-      }
+  function updateMeshes(forceRebuild) {
+    const hexVerts = [];
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * TAU;
+      hexVerts.push(new THREE.Vector2(Math.cos(angle), Math.sin(angle)));
+    }
+
+    for (const arm of arms) {
+      const vertices = [];
+      const colors = [];
+      
       const P_abs = Math.abs(arm.P || 0);
       const lerpFactor = clamp(P_abs / 5e-10, 0, 1);
       const tipColor = new THREE.Color(0xcfe9ff).lerp(new THREE.Color(0xffffff), lerpFactor);
       const baseColor = new THREE.Color(0xcfe9ff);
 
-      for (let i=0;i<count;i++){
-        const p0 = arm.nodes[i].pos.clone().multiplyScalar(VIZ.scale);
-        const p1 = arm.nodes[i+1].pos.clone().multiplyScalar(VIZ.scale);
-        const seg = p1.clone().sub(p0);
-        tmpQuat.setFromUnitVectors(new THREE.Vector3(0,1,0), seg.clone().normalize());
-        const r = (arm.nodes[i].w + arm.nodes[i+1].w) * 0.25 * VIZ.scale;
-        tmpMat.identity().compose(p0, tmpQuat, new THREE.Vector3(r, seg.length(), r));
-        arm.inst.setMatrixAt(i, tmpMat);
-        arm.inst.setColorAt(i, i>=count-3 ? tipColor : baseColor);
+      for (let i = 0; i < arm.nodes.length - 1; i++) {
+        const n1 = arm.nodes[i];
+        const n2 = arm.nodes[i+1];
+
+        const dir = n2.pos.clone().sub(n1.pos).normalize();
+        const up = new THREE.Vector3(0, 0, 1);
+        const right = new THREE.Vector3().crossVectors(dir, up).normalize();
+        up.crossVectors(right, dir);
+
+        const mat1 = new THREE.Matrix4().makeBasis(right, up, dir).setPosition(n1.pos);
+        const mat2 = new THREE.Matrix4().makeBasis(right, up, dir).setPosition(n2.pos);
+        
+        const c = (i / (arm.nodes.length - 2) > 0.7) ? tipColor : baseColor;
+
+        for (let j = 0; j < 6; j++) {
+          const v1 = hexVerts[j];
+          const v2 = hexVerts[(j + 1) % 6];
+          
+          const p1a = new THREE.Vector3(v1.x * n1.w, v1.y * n1.thickness, 0).applyMatrix4(mat1);
+          const p1b = new THREE.Vector3(v2.x * n1.w, v2.y * n1.thickness, 0).applyMatrix4(mat1);
+          const p2a = new THREE.Vector3(v1.x * n2.w, v1.y * n2.thickness, 0).applyMatrix4(mat2);
+          const p2b = new THREE.Vector3(v2.x * n2.w, v2.y * n2.thickness, 0).applyMatrix4(mat2);
+          
+          vertices.push(p1a.x, p1a.y, p1a.z,  p1b.x, p1b.y, p1b.z,  p2a.x, p2a.y, p2a.z);
+          vertices.push(p1b.x, p1b.y, p1b.z,  p2b.x, p2b.y, p2b.z,  p2a.x, p2a.y, p2a.z);
+          
+          for(let k=0; k<6; k++) colors.push(c.r, c.g, c.b);
+        }
       }
-      arm.inst.instanceMatrix.needsUpdate = true;
-      arm.inst.instanceColor.needsUpdate = true;
+
+      for(let i=0; i<vertices.length; i++) vertices[i] *= VIZ.scale;
+
+      arm.mesh.geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+      arm.mesh.geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+      arm.mesh.geometry.computeVertexNormals();
     }
   }
 
@@ -323,10 +441,33 @@ physical and visual parameters of the simulation.
   fField.add(params, 'E_phi', -90, 90, 1).onChange(updateFieldArrow);
   fField.open();
 
+  const fThermo = gui.addFolder('Thermo & Kinetics');
+  fThermo.add(params, 'T', -30, 0, 0.1).name('Temp (°C)').onChange(updateNakaya);
+  fThermo.add(params, 'alpha_basal', 0, 1).name('α_basal');
+  fThermo.add(params, 'alpha_prism', 0, 1).name('α_prism');
+  fThermo.add(params, 'qllBoost').name('QLL Boost');
+  fThermo.open();
+
+  const fDiffusion = gui.addFolder('Diffusion & Ventilation');
+  fDiffusion.add(params, 'D', 1e-5, 5e-5).name('D (m²/s)');
+  fDiffusion.add(params, 'fall_speed', 0, 2).name('Fall Speed (m/s)');
+  fDiffusion.open();
+
   const fFlexo = gui.addFolder('Flexo & Growth');
   fFlexo.add(params, 'mu_eff', 0, 5e-6);
   fFlexo.add(params, 'S', 0, 0.2);
-  fFlexo.add(params, 'k0', 0, 1e-4);
+  fFlexo.add(params, 'lab_needle_mode').name('Lab Needle Mode');
+
+  const fBranching = gui.addFolder('Branching');
+  fBranching.add(params, 'kappa_branch', 0, 400);
+  fBranching.add(params, 'ds_branch', 0, 6e-4);
+  fBranching.add(params, 'branchScale', 0.2, 1.0);
+
+  const fWiggle = gui.addFolder('Wiggle');
+  fWiggle.add(params, 'omega', 1, 30);
+  fWiggle.add(params, 'zeta', 0, 0.5);
+  fWiggle.add(params, 'gustSigma', 0, 1e-6);
+  fWiggle.add(params, 'gustTau', 0.05, 1.0);
 
   const fGeom = gui.addFolder('Geometry & Time');
   fGeom.add(params, 'armNodes', 6, 48, 1).onChange(resetState);
@@ -340,6 +481,18 @@ physical and visual parameters of the simulation.
   document.getElementById('reset').onclick = ()=> resetState();
   document.getElementById('randomize').onclick = ()=> { params.seed = (1 + Math.random()*9999)|0; resetState(); };
   document.getElementById('exportPNG').onclick = ()=> { renderer.render(scene, camera); const a = document.createElement('a'); a.download = 'flexo_snowflake.png'; a.href = renderer.domElement.toDataURL('image/png'); a.click(); };
+  document.getElementById('exportCSV').onclick = ()=> {
+    const headers = Object.keys(timeSeriesData[0] || {});
+    let csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n";
+    csvContent += timeSeriesData.map(row => headers.map(h => row[h]).join(",")).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "snowflake_data.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   addEventListener('resize', ()=>{ renderer.setSize(sceneEl.clientWidth, sceneEl.clientHeight); camera.aspect = sceneEl.clientWidth/sceneEl.clientHeight; camera.updateProjectionMatrix(); });
   addEventListener('keydown', (e)=>{ if (e.code === 'Space') running = !running; else if (e.code === 'KeyR') resetState(); else if (e.code === 'KeyS') { running = false; step(params.dt); render(); } else if (e.code === 'KeyL') params.autoRotate = !params.autoRotate; });
@@ -370,7 +523,7 @@ physical and visual parameters of the simulation.
         markerData[i].mesh.material.opacity = 1.0 - (markerData[i].time / 1.5);
       }
     }
-
+    
     frameCount++;
     if (tNow > lastFpsUpdate + 1000) {
       fps = frameCount; frameCount = 0; lastFpsUpdate = tNow;
