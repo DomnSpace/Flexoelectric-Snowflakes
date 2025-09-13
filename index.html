@@ -97,7 +97,7 @@ physical and visual parameters of the simulation.
     mu_eff: 1e-6, S: 0.08,
 
     // Branching
-    kappa_branch: 80, ds_branch: 1e-4, branchScale: 0.55,
+    v_tip_th: 1e-6, sigma_sb: 0.05, spacing_gain: 2.0, branchScale: 0.55,
 
     // Wiggle
     omega: 12, zeta: 0.12, gustSigma: 2e-8, gustTau: 0.25,
@@ -140,7 +140,7 @@ physical and visual parameters of the simulation.
 
   const grid = new THREE.GridHelper(4, 20, 0x1e2b38, 0x0f1821);
   grid.visible = params.grid; scene.add(grid);
-  
+
   const axes = new THREE.AxesHelper(1);
   axes.visible = params.axes;
   scene.add(axes);
@@ -275,17 +275,17 @@ physical and visual parameters of the simulation.
       totalDip.add(armDir.clone().multiplyScalar(Math.abs(P) * (60e-6*60e-6) * 0.4e-3));
 
       // --- Full Microphysics Growth Law ---
-      const kB = 1.38e-23; 
+      const kB = 1.38e-23;
       const m = 2.99e-26;
       const Sc = 0.7;
 
       const T_kelvin = params.T + 273.15;
       const v_kin = Math.sqrt(kB * T_kelvin / (2 * Math.PI * m));
-      
+
       const L_arm = arm.nodes[arm.nodes.length-1].pos.length();
       const Re = params.fall_speed * L_arm / 1.5e-5;
       const Sh = 2 + 0.6 * Math.sqrt(Re) * Math.cbrt(Sc);
-      
+
       const alpha_diff = (params.D * Sh) / ((L_arm || 1e-6) * v_kin);
 
       const E_local = E.dot(armDir);
@@ -301,27 +301,31 @@ physical and visual parameters of the simulation.
       const alpha_prism = params.alpha_prism * (params.qllBoost ? 2.0 : 1.0);
       const v_prism = (alpha_prism * v_kin) / (alpha_prism + alpha_diff) * params.S * flexo_bias;
       const dW = v_prism * dt * params.speed * 1e3;
-      
+
       for (let i = 0; i < arm.nodes.length; i++) {
         arm.nodes[i].w = Math.max(params.w0 * 0.5, Math.min(params.w0 * 3.0, arm.nodes[i].w + dW));
         arm.nodes[i].thickness = Math.max(params.w0 * 0.5, Math.min(params.w0 * 3.0, arm.nodes[i].thickness + dL*0.1));
       }
 
-      if (Math.abs(kappa) > params.kappa_branch){
+      const v_tip = dL/dt;
+      const s_since_last = arm.nodes[arm.nodes.length-1].pos.length() - (arm.branches.length ? arm.branches[arm.branches.length-1].s0 * params.L0 : 0);
+      const spacing_th = params.spacing_gain * Math.sqrt(params.D / (v_tip + 1e-9));
+
+      if (v_tip > params.v_tip_th && params.S > params.sigma_sb && s_since_last > spacing_th) {
         const lastNode = arm.nodes[arm.nodes.length-1];
-        const lastBranchS = arm.branches.length? arm.branches[arm.branches.length-1].s0 : 0;
-        if (lastNode.pos.length() - lastBranchS*params.L0 > params.ds_branch){
-          const normalSign = (Math.random()<0.5)? +1 : -1;
-          const bLen = params.branchScale * params.L0 * 0.25;
-          arm.branches.push({
-            s0: 1, normal: normalSign, length: bLen,
-            nodes: [ lastNode.pos.clone(), lastNode.pos.clone().add(new THREE.Vector3(-armDir.y, armDir.x, 0).multiplyScalar(normalSign*bLen)) ]
-          });
-          const marker = new THREE.Mesh(new THREE.SphereGeometry(0.01, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true }));
-          marker.position.copy(lastNode.pos).multiplyScalar(VIZ.scale);
-          branchMarkers.add(marker);
-          markerData.push({ mesh: marker, time: 0 });
-        }
+        const normalSign = (Math.random()<0.5)? +1 : -1;
+        const bLen = params.branchScale * params.L0 * 0.25;
+        const branchAngle = arm.baseAngle + normalSign * Math.PI / 3;
+        const branchDir = new THREE.Vector3(Math.cos(branchAngle), Math.sin(branchAngle), 0);
+
+        arm.branches.push({
+          s0: 1, normal: normalSign, length: bLen,
+          nodes: [ lastNode.pos.clone(), lastNode.pos.clone().add(branchDir.multiplyScalar(bLen)) ]
+        });
+        const marker = new THREE.Mesh(new THREE.SphereGeometry(0.01, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true }));
+        marker.position.copy(lastNode.pos).multiplyScalar(VIZ.scale);
+        branchMarkers.add(marker);
+        markerData.push({ mesh: marker, time: 0 });
       }
       meanKappa += Math.abs(kappa);
 
@@ -379,11 +383,14 @@ physical and visual parameters of the simulation.
     for (const arm of arms) {
       const vertices = [];
       const colors = [];
-      
+
       const P_abs = Math.abs(arm.P || 0);
       const lerpFactor = clamp(P_abs / 5e-10, 0, 1);
-      const tipColor = new THREE.Color(0xcfe9ff).lerp(new THREE.Color(0xffffff), lerpFactor);
-      const baseColor = new THREE.Color(0xcfe9ff);
+
+      const plateColor = new THREE.Color(0xa0c0ff);
+      const columnColor = new THREE.Color(0xffa0a0);
+      const baseColor = params.alpha_prism > params.alpha_basal ? plateColor : columnColor;
+      const tipColor = baseColor.clone().lerp(new THREE.Color(0xffffff), lerpFactor);
 
       for (let i = 0; i < arm.nodes.length - 1; i++) {
         const n1 = arm.nodes[i];
@@ -396,22 +403,37 @@ physical and visual parameters of the simulation.
 
         const mat1 = new THREE.Matrix4().makeBasis(right, up, dir).setPosition(n1.pos);
         const mat2 = new THREE.Matrix4().makeBasis(right, up, dir).setPosition(n2.pos);
-        
+
         const c = (i / (arm.nodes.length - 2) > 0.7) ? tipColor : baseColor;
 
-        for (let j = 0; j < 6; j++) {
-          const v1 = hexVerts[j];
-          const v2 = hexVerts[(j + 1) % 6];
-          
-          const p1a = new THREE.Vector3(v1.x * n1.w, v1.y * n1.thickness, 0).applyMatrix4(mat1);
-          const p1b = new THREE.Vector3(v2.x * n1.w, v2.y * n1.thickness, 0).applyMatrix4(mat1);
-          const p2a = new THREE.Vector3(v1.x * n2.w, v1.y * n2.thickness, 0).applyMatrix4(mat2);
-          const p2b = new THREE.Vector3(v2.x * n2.w, v2.y * n2.thickness, 0).applyMatrix4(mat2);
-          
-          vertices.push(p1a.x, p1a.y, p1a.z,  p1b.x, p1b.y, p1b.z,  p2a.x, p2a.y, p2a.z);
-          vertices.push(p1b.x, p1b.y, p1b.z,  p2b.x, p2b.y, p2b.z,  p2a.x, p2a.y, p2a.z);
-          
-          for(let k=0; k<6; k++) colors.push(c.r, c.g, c.b);
+        if (i < arm.nodes.length - 2) { // Prism segments
+          for (let j = 0; j < 6; j++) {
+            const v1 = hexVerts[j];
+            const v2 = hexVerts[(j + 1) % 6];
+
+            const p1a = new THREE.Vector3(v1.x * n1.w, v1.y * n1.thickness, 0).applyMatrix4(mat1);
+            const p1b = new THREE.Vector3(v2.x * n1.w, v2.y * n1.thickness, 0).applyMatrix4(mat1);
+            const p2a = new THREE.Vector3(v1.x * n2.w, v1.y * n2.thickness, 0).applyMatrix4(mat2);
+            const p2b = new THREE.Vector3(v2.x * n2.w, v2.y * n2.thickness, 0).applyMatrix4(mat2);
+
+            vertices.push(p1a.x, p1a.y, p1a.z,  p1b.x, p1b.y, p1b.z,  p2a.x, p2a.y, p2a.z);
+            vertices.push(p1b.x, p1b.y, p1b.z,  p2b.x, p2b.y, p2b.z,  p2a.x, p2a.y, p2a.z);
+
+            for(let k=0; k<6; k++) colors.push(c.r, c.g, c.b);
+          }
+        } else { // Tip pyramid
+          const apex = n2.pos;
+          for (let j = 0; j < 6; j++) {
+            const v1 = hexVerts[j];
+            const v2 = hexVerts[(j + 1) % 6];
+
+            const p1a = new THREE.Vector3(v1.x * n1.w, v1.y * n1.thickness, 0).applyMatrix4(mat1);
+            const p1b = new THREE.Vector3(v2.x * n1.w, v2.y * n1.thickness, 0).applyMatrix4(mat1);
+
+            vertices.push(p1a.x, p1a.y, p1a.z,  p1b.x, p1b.y, p1b.z,  apex.x, apex.y, apex.z);
+
+            for(let k=0; k<3; k++) colors.push(tipColor.r, tipColor.g, tipColor.b);
+          }
         }
       }
 
@@ -459,8 +481,9 @@ physical and visual parameters of the simulation.
   fFlexo.add(params, 'lab_needle_mode').name('Lab Needle Mode');
 
   const fBranching = gui.addFolder('Branching');
-  fBranching.add(params, 'kappa_branch', 0, 400);
-  fBranching.add(params, 'ds_branch', 0, 6e-4);
+  fBranching.add(params, 'v_tip_th', 0, 1e-5, 1e-7).name('v_tip Threshold');
+  fBranching.add(params, 'sigma_sb', 0, 0.2, 0.01).name('σ_sb Threshold');
+  fBranching.add(params, 'spacing_gain', 0, 10, 0.1).name('Spacing Gain');
   fBranching.add(params, 'branchScale', 0.2, 1.0);
 
   const fWiggle = gui.addFolder('Wiggle');
@@ -523,7 +546,7 @@ physical and visual parameters of the simulation.
         markerData[i].mesh.material.opacity = 1.0 - (markerData[i].time / 1.5);
       }
     }
-    
+
     frameCount++;
     if (tNow > lastFpsUpdate + 1000) {
       fps = frameCount; frameCount = 0; lastFpsUpdate = tNow;
