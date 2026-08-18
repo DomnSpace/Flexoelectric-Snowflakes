@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>HexaLens — sixfold physics instrument</title>
+<style>
+  :root{
+    --bg:#071018;--panel:#0b1721;--panel2:#0e1d29;--line:#234052;--fg:#e8f4fb;--muted:#8aa8b8;
+    --ice:#cfefff;--accent:#7ed9ff;--warm:#ffd18a;--danger:#ff8f8f;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%;background:radial-gradient(circle at 50% 20%,#102532 0,#071018 45%,#040a0f 100%);color:var(--fg);font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif}
+  body{padding:14px}
+  .app{max-width:1500px;margin:auto;display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:14px}
+  .card{background:linear-gradient(180deg,rgba(14,29,41,.94),rgba(7,16,24,.96));border:1px solid #1c3444;border-radius:18px;box-shadow:0 16px 50px #0007,inset 0 1px 0 #ffffff0a}
+  .main{position:relative;min-height:720px;overflow:hidden}
+  .main:before{content:"";position:absolute;inset:0;background-image:linear-gradient(#ffffff05 1px,transparent 1px),linear-gradient(90deg,#ffffff05 1px,transparent 1px);background-size:28px 28px;mask-image:radial-gradient(circle at center,#000 30%,transparent 80%);pointer-events:none}
+  header{position:absolute;z-index:5;left:18px;top:16px;right:18px;display:flex;justify-content:space-between;gap:16px;align-items:flex-start}
+  h1{font-size:19px;margin:0 0 4px;letter-spacing:.02em}.sub{font-size:12px;color:var(--muted);max-width:650px}
+  .badge{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#ffd8a3;border:1px solid #76542c;background:#49300e55;border-radius:999px;padding:6px 9px;white-space:nowrap}
+  #viz{position:absolute;inset:74px 8px 10px 8px;width:calc(100% - 16px);height:calc(100% - 84px);touch-action:none}
+  .side{padding:14px;display:flex;flex-direction:column;gap:12px}
+  .section{background:#08131caa;border:1px solid #183142;border-radius:14px;padding:12px}
+  .section h2{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#a9c8d8;margin:0 0 10px}
+  label{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;font-size:12px;color:#b9cfda;margin:9px 0}
+  select,input[type="range"]{width:100%} select{background:#0c1c27;color:var(--fg);border:1px solid #274456;border-radius:9px;padding:7px}
+  input[type="range"]{accent-color:#7ed9ff}
+  .row{display:flex;gap:8px;align-items:center}.row>*{flex:1}
+  button{background:#102735;color:var(--fg);border:1px solid #2a4d61;border-radius:10px;padding:8px 10px;cursor:pointer}button:hover{background:#173344}
+  .kv{display:grid;grid-template-columns:1fr auto;gap:7px;font-size:12px;padding:4px 0;border-bottom:1px solid #ffffff08}.kv:last-child{border:0}.kv span:first-child{color:var(--muted)}
+  .budget{height:8px;border-radius:99px;background:#122735;overflow:hidden;margin:4px 0 9px}.budget>i{display:block;height:100%;background:linear-gradient(90deg,#79d7ff,#dff8ff)}
+  .tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.tab{font-size:11px;padding:7px 4px}.tab.active{background:#1a4054;border-color:#477a92}
+  .note{font-size:11px;line-height:1.4;color:#88a7b7}
+  .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:#9eb9c7}.legend b{display:inline-block;width:14px;height:2px;background:#7ed9ff;vertical-align:middle;margin-right:5px}.legend .base b{background:#456274}.legend .sel b{background:#fff;height:3px}
+  @media(max-width:900px){body{padding:8px}.app{grid-template-columns:1fr}.main{min-height:620px}.side{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.section:first-child{grid-column:1/-1}}
+  @media(max-width:560px){.main{min-height:560px}.side{grid-template-columns:1fr}header{left:12px;right:12px}.sub{max-width:260px}.badge{font-size:9px}.tabs{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div class="app">
+  <main class="card main">
+    <header>
+      <div><h1>HexaLens · sixfold physics instrument</h1><div class="sub">Same radial experiment in all six crystallographic directions. Symmetry breaking becomes geometry.</div></div>
+      <div class="badge">synthetic field prototype</div>
+    </header>
+    <svg id="viz" viewBox="-420 -360 840 720" aria-label="Sixfold radial physics graph"></svg>
+  </main>
+
+  <aside class="card side">
+    <section class="section">
+      <h2>View</h2>
+      <div class="tabs">
+        <button class="tab active">HexaLens</button><button class="tab" disabled>Köhler</button><button class="tab" disabled>Field</button>
+        <button class="tab" disabled>Phase</button><button class="tab" disabled>Crystal 3D</button><button class="tab" disabled>History</button>
+      </div>
+      <p class="note">The disabled views are reserved rather than faked. HexaLens becomes the overview; Köhler, continuum field, phase trajectory and 3D remain full views.</p>
+    </section>
+
+    <section class="section">
+      <h2>HexaLens channel</h2>
+      <label><span>Scalar</span><select id="channel"><option value="sigma">Vapor supersaturation σ</option><option value="flux">Vapor flux |Jᵥ|</option><option value="dT">Temperature excess ΔT</option><option value="mu">Interfacial drive Δμ*</option></select></label>
+      <label><span>Forcing angle</span><span id="angleOut">18°</span></label><input id="angle" type="range" min="0" max="359" value="18" />
+      <label><span>Forcing strength</span><span id="forceOut">0.45</span></label><input id="force" type="range" min="0" max="1" step="0.01" value="0.45" />
+      <label><span>Difference mode</span><input id="difference" type="checkbox" /></label>
+      <label><span>Frame</span><select id="frame"><option value="crystal">Crystal frame</option><option value="lab">Laboratory frame</option></select></label>
+      <div class="row"><button id="symmetrize">Symmetric baseline</button><button id="perturb">New perturbation</button></div>
+    </section>
+
+    <section class="section">
+      <h2>Selected arm</h2>
+      <div class="kv"><span>Arm</span><b id="armId">1 / 6</b></div>
+      <div class="kv"><span>θ</span><b id="armTheta">0°</b></div>
+      <div class="kv"><span>tip σ</span><b id="tipSigma">—</b></div>
+      <div class="kv"><span>tip α</span><b id="tipAlpha">—</b></div>
+      <div class="kv"><span>tip vₙ</span><b id="tipV">—</b></div>
+      <div class="kv"><span>symmetry deviation</span><b id="tipDev">—</b></div>
+    </section>
+
+    <section class="section">
+      <h2>Growth budget · selected tip</h2>
+      <div class="kv"><span>ambient drive</span><b id="bAmbient">—</b></div><div class="budget"><i id="barAmbient"></i></div>
+      <div class="kv"><span>diffusion depletion</span><b id="bDiff">—</b></div><div class="budget"><i id="barDiff"></i></div>
+      <div class="kv"><span>latent heat</span><b id="bHeat">—</b></div><div class="budget"><i id="barHeat"></i></div>
+      <div class="kv"><span>capillarity</span><b id="bCap">—</b></div><div class="budget"><i id="barCap"></i></div>
+      <div class="kv"><span>attachment / SDAK</span><b id="bAttach">—</b></div><div class="budget"><i id="barAttach"></i></div>
+      <p class="note">Budget values are synthetic in this prototype. The final version will be computed from the solver at the clicked interface element.</p>
+    </section>
+
+    <section class="section">
+      <h2>Reading the instrument</h2>
+      <div class="legend"><span class="base"><b></b>radial baseline</span><span><b></b>field profile</span><span class="sel"><b></b>selected arm</span></div>
+      <p class="note">Radius means physical distance. Angle means crystal direction. Congruent sectors = sixfold symmetry; deformation = directional physics.</p>
+    </section>
+  </aside>
+</div>
+<script>
+(() => {
+  const svg = document.getElementById('viz');
+  const NS='http://www.w3.org/2000/svg';
+  const N=45, inner=82, outer=286;
+  let selected=0, perturbSeed=0.37, forceStrength=.45, forceAngle=18*Math.PI/180, sym=false;
+  const channels={sigma:{label:'σ',scale:72},flux:{label:'|Jᵥ|',scale:58},dT:{label:'ΔT',scale:64},mu:{label:'Δμ*',scale:62}};
+
+  const el=(tag,attrs={})=>{const n=document.createElementNS(NS,tag);for(const[k,v]of Object.entries(attrs))n.setAttribute(k,v);return n};
+  const add=(tag,attrs={})=>{const n=el(tag,attrs);svg.appendChild(n);return n};
+  const polar=(r,a)=>[r*Math.cos(a),r*Math.sin(a)];
+  const path=(pts)=>pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(2)+' '+p[1].toFixed(2)).join(' ');
+  const fmt=(v,n=3)=>(v>=0?'+':'')+v.toFixed(n);
+
+  function makeState(){
+    const r=Array.from({length:N},(_,i)=>i/(N-1));
+    const arms=[];
+    for(let i=0;i<6;i++){
+      const theta=i*Math.PI/3;
+      const align=Math.cos(theta-forceAngle);
+      const tri=Math.cos(3*theta+perturbSeed*4.7);
+      const asym=s ? 0 : forceStrength*(.68*align+.18*tri+.14*Math.sin(i*2.13+perturbSeed*9));
+      const sigma=r.map(x=>0.012+0.068*(1-Math.exp(-3.8*x)) + asym*0.011*(1-x)*Math.exp(-1.1*x));
+      const flux=r.map(x=>0.18+0.82*Math.exp(-4.5*x)*(1+.48*asym));
+      const dT=r.map(x=>0.9*Math.exp(-3.2*x)*(1+.32*asym));
+      const mu=r.map((x,j)=>1000*(sigma[j]-.021)-4.2*dT[j]-.9*flux[j]);
+      const tipSigma=sigma[0];
+      const alpha=.16+.46/(1+Math.exp(-85*(tipSigma-.028))) * (1+.12*asym);
+      const vTip=Math.max(0,tipSigma-.016)*alpha*1e-4;
+      arms.push({theta,sigma,flux,dT,mu,tipSigma,alpha,vTip,asym});
+    }
+    return {r,arms};
+  }
+  let s=makeState();
+
+  function clear(){svg.replaceChildren()}
+  function hex(r,attrs={}){const pts=Array.from({length:6},(_,i)=>polar(r,i*Math.PI/3));pts.push(pts[0]);add('path',{d:path(pts),fill:'none',...attrs})}
+  function radialProfile(arm,key,mean){
+    const cfg=channels[key], pts=[], base=[];
+    const values=arm[key];
+    let max=1;
+    if(key==='sigma')max=.09; else if(key==='flux')max=1.2; else if(key==='dT')max=1.2; else max=70;
+    for(let j=0;j<N;j++){
+      const rr=inner+(outer-inner)*s.r[j], a=arm.theta;
+      let v=values[j]; if(mean) v-=mean[j];
+      const normalized=mean ? v/(max*.35) : (key==='mu' ? v/max : v/max);
+      const off=Math.max(-1.2,Math.min(1.2,normalized))*cfg.scale;
+      const [bx,by]=polar(rr,a), nx=-Math.sin(a), ny=Math.cos(a);
+      base.push([bx,by]); pts.push([bx+nx*off,by+ny*off]);
+    }
+    return {pts,base};
+  }
+
+  function render(){
+    clear();
+    const key=document.getElementById('channel').value;
+    const diff=document.getElementById('difference').checked;
+    const g=add('g',{'stroke-linecap':'round','stroke-linejoin':'round'});
+
+    // coordinate field
+    [105,145,185,225,265].forEach((rr,k)=>hex(rr,{stroke:k===4?'#35566a':'#183243','stroke-width':k===4?1.5:1,'stroke-dasharray':k===4?'0':'3 6',opacity:.9}));
+    for(let i=0;i<6;i++){
+      const [x,y]=polar(outer+22,i*Math.PI/3); add('text',{x,y,fill:'#7898a9','font-size':11,'text-anchor':'middle','dominant-baseline':'central'}).textContent=`A${i+1}`;
+      const [x1,y1]=polar(inner-6,i*Math.PI/3),[x2,y2]=polar(outer+4,i*Math.PI/3);add('line',{x1,y1,x2,y2,stroke:'#456274','stroke-width':1,opacity:.7});
+    }
+
+    // forcing arrow
+    const labAngle=forceAngle;
+    const [ax,ay]=polar(345,labAngle),[bx,by]=polar(304,labAngle);
+    add('line',{x1:bx,y1:by,x2:ax,y2:ay,stroke:'#ffd18a','stroke-width':3,opacity:.95});
+    const ah=el('polygon',{points:`${ax},${ay} ${ax-12*Math.cos(labAngle-.5)},${ay-12*Math.sin(labAngle-.5)} ${ax-12*Math.cos(labAngle+.5)},${ay-12*Math.sin(labAngle+.5)}`,fill:'#ffd18a'});svg.appendChild(ah);
+    const [tx,ty]=polar(360,labAngle);add('text',{x:tx,y:ty,fill:'#ffd18a','font-size':10,'text-anchor':'middle'}).textContent='forcing';
+
+    let mean=null;
+    if(diff){mean=Array.from({length:N},(_,j)=>s.arms.reduce((a,b)=>a+b[key][j],0)/6)}
+
+    for(let i=0;i<6;i++){
+      const arm=s.arms[i],{pts,base}=radialProfile(arm,key,mean);
+      const ribbon=[...base,...pts.slice().reverse()];
+      add('path',{d:path(ribbon)+' Z',fill:i===selected?'#bdefff26':'#65cfff13',stroke:'none'});
+      const p=add('path',{d:path(pts),fill:'none',stroke:i===selected?'#ffffff':'#79d7ff','stroke-width':i===selected?3.4:2,opacity:i===selected?1:.82,'data-arm':i});
+      p.style.cursor='pointer';p.addEventListener('click',()=>{selected=i;render();updateInspector()});
+    }
+
+    // central synthetic crystal
+    const crystal=add('g',{opacity:.96});
+    for(let i=0;i<6;i++){
+      const a=i*Math.PI/3, len=64*(1+.18*s.arms[i].asym); const [x2,y2]=polar(len,a);
+      crystal.appendChild(el('line',{x1:0,y1:0,x2,y2,stroke:i===selected?'#fff':'#cfefff','stroke-width':7,'stroke-linecap':'round'}));
+      for(const f of [.52,.72]){
+        const [x,y]=polar(len*f,a);for(const side of [-1,1]){const aa=a+side*.72,[sx,sy]=[x,y],[ex,ey]=[x+18*Math.cos(aa),y+18*Math.sin(aa)];crystal.appendChild(el('line',{x1:sx,y1:sy,x2:ex,y2:ey,stroke:'#bde9ff','stroke-width':3.3,'stroke-linecap':'round'}))}
+      }
+    }
+    const cp=Array.from({length:6},(_,i)=>polar(24,i*Math.PI/3));cp.push(cp[0]);crystal.appendChild(el('path',{d:path(cp),fill:'#b9e9ff55',stroke:'#dff7ff','stroke-width':2}));
+
+    // selected sector cue
+    const a=selected*Math.PI/3,[sx,sy]=polar(314,a);add('circle',{cx:sx,cy:sy,r:7,fill:'#fff',stroke:'#7ed9ff','stroke-width':3});
+    const title=add('text',{x:0,y:-322,fill:'#abc8d8','font-size':12,'text-anchor':'middle'});title.textContent=`${channels[key].label} · ${diff?'deviation from six-arm mean':'absolute radial profiles'}`;
+    updateInspector();
+  }
+
+  function updateInspector(){
+    const a=s.arms[selected], mean=s.arms.reduce((z,b)=>z+b.tipSigma,0)/6;
+    document.getElementById('armId').textContent=`${selected+1} / 6`;
+    document.getElementById('armTheta').textContent=`${Math.round(selected*60)}°`;
+    document.getElementById('tipSigma').textContent=(a.tipSigma*100).toFixed(2)+' %';
+    document.getElementById('tipAlpha').textContent=a.alpha.toFixed(3);
+    document.getElementById('tipV').textContent=(a.vTip*1e6).toFixed(3)+' µm s⁻¹';
+    document.getElementById('tipDev').textContent=((a.tipSigma-mean)*100).toFixed(3)+' %-pt';
+    const b={Ambient:Math.max(0,a.tipSigma*100),Diff:Math.max(0,a.flux[0]*1.4),Heat:Math.max(0,a.dT[0]*.7),Cap:.22+.08*Math.abs(a.asym),Attach:Math.max(0,(1-a.alpha)*1.5)};
+    const vals=[['Ambient',b.Ambient],['Diff',b.Diff],['Heat',b.Heat],['Cap',b.Cap],['Attach',b.Attach]];
+    const max=Math.max(...vals.map(x=>x[1]),1e-6);
+    vals.forEach(([k,v])=>{document.getElementById('b'+k).textContent=v.toFixed(2);document.getElementById('bar'+k).style.width=(100*v/max).toFixed(1)+'%'});
+  }
+
+  function regenerate(){s=makeState();render()}
+  document.getElementById('channel').addEventListener('change',render);
+  document.getElementById('difference').addEventListener('change',render);
+  document.getElementById('angle').addEventListener('input',e=>{forceAngle=+e.target.value*Math.PI/180;document.getElementById('angleOut').textContent=e.target.value+'°';regenerate()});
+  document.getElementById('force').addEventListener('input',e=>{forceStrength=+e.target.value;document.getElementById('forceOut').textContent=(+e.target.value).toFixed(2);regenerate()});
+  document.getElementById('symmetrize').addEventListener('click',()=>{forceStrength=0;document.getElementById('force').value=0;document.getElementById('forceOut').textContent='0.00';regenerate()});
+  document.getElementById('perturb').addEventListener('click',()=>{perturbSeed=Math.random();forceStrength=Math.max(.22,+document.getElementById('force').value||.45);document.getElementById('force').value=forceStrength;document.getElementById('forceOut').textContent=forceStrength.toFixed(2);regenerate()});
+  document.getElementById('frame').addEventListener('change',e=>{document.querySelector('.sub').textContent=e.target.value==='crystal'?'Same radial experiment in all six crystallographic directions. Symmetry breaking becomes geometry.':'Laboratory frame: forcing stays fixed while the crystal coordinate system may rotate.'});
+  render();
+})();
+</script>
+</body>
+</html>
