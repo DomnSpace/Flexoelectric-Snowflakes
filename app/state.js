@@ -18,6 +18,19 @@ export function createInitialState() {
       driver: null,
       barrierCrossedAt: null,
     },
+    supercool: {
+      enabled: false,
+      mode: 'cool_fixed_e',
+      targetTemperatureC: -38,
+      coolingRateKPerMin: 6,
+      enteredBelowZeroAt: null,
+      iceSupersaturatedAt: null,
+      metastableAt: null,
+      koopWindowAt: null,
+      nucleationModel: 'none',
+      selectedJ_m3_s: null,
+      observationWindowS: 1,
+    },
     phase: { name: 'dry_aerosol', activated: false, activatedAt: null },
     view: {
       field: 'supersaturation',
@@ -27,10 +40,13 @@ export function createInitialState() {
       inspectIndex: -1,
       liveInspect: true,
       workMode: 'work',
+      phaseSurfaceScalar: 'deltaMu',
+      phaseSurfaceCursor: null,
     },
     diagnostics: {
       critical: null, saturation: null, rate: 0, budget: null,
       modes: [], radial: [], curve: null, landscape: null, equilibria: null,
+      supercool: null, phaseSurface: null,
     },
     history: [
       { t: 0, phase: 'dry_aerosol', label: 'dry aerosol', detail: 'Initial dry particle before controlled humidification.' },
