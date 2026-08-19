@@ -1,43 +1,53 @@
 export function createInitialState() {
   return {
     clock: { t: 0, running: false, speed: 1, dt: 0.02 },
-    ambient: {
-      T: 298.15,
-      supersaturationPct: 0.45,
-      pressurePa: 101325,
-    },
+    ambient: { T: 298.15, supersaturationPct: 0.05, pressurePa: 101325 },
     aerosol: {
       dryDiameter: 80e-9,
       kappaHyg: 0.30,
       wetDiameter: 82e-9,
       surfaceTensionMode: 'iapws',
     },
-    phase: {
-      name: 'dry_aerosol',
-      activated: false,
-      activatedAt: null,
+    experiment: {
+      mode: 'supersat_ramp',
+      startSupersaturationPct: 0.05,
+      targetSupersaturationPct: 0.45,
+      rampDuration: 12,
+      coolingRateKPerMin: 4,
+      targetTemperatureC: 5,
+      driver: null,
+      barrierCrossedAt: null,
     },
+    phase: { name: 'dry_aerosol', activated: false, activatedAt: null },
     view: {
       field: 'supersaturation',
       hexaMode: 'absolute',
       selectedArm: 0,
       selectedRadiusFactor: 2.2,
+      inspectIndex: -1,
+      liveInspect: true,
+      workMode: 'work',
     },
     diagnostics: {
-      critical: null,
-      saturation: null,
-      rate: 0,
-      budget: null,
-      modes: [],
-      radial: [],
+      critical: null, saturation: null, rate: 0, budget: null,
+      modes: [], radial: [], curve: null, landscape: null, equilibria: null,
     },
     history: [
-      { t: 0, phase: 'dry_aerosol', label: 'dry aerosol', detail: 'Initial hygroscopic dry particle.' },
+      { t: 0, phase: 'dry_aerosol', label: 'dry aerosol', detail: 'Initial dry particle before controlled humidification.' },
     ],
+    trajectory: [],
+    sampleAccumulator: 0,
   };
 }
 
 export function pushHistory(state, phase, label, detail) {
   if (state.history.some(e => e.phase === phase)) return;
   state.history.push({ t: state.clock.t, phase, label, detail });
+}
+
+export function pushTrajectory(state, sample, force = false) {
+  const last = state.trajectory[state.trajectory.length - 1];
+  if (!force && last && state.clock.t - last.t < 0.10) return;
+  state.trajectory.push(sample);
+  if (state.trajectory.length > 2400) state.trajectory.shift();
 }
