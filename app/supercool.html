@@ -1,155 +1,47 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Supercooled Liquid Boundary Laboratory</title>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Supercooled Feedback Laboratory</title>
 <style>
-:root{--bg:#061019;--panel:#0b1822;--line:#214356;--fg:#edf8fd;--muted:#8faeba;--ice:#a8e5ff;--water:#6dcfff;--warm:#ffd28d;--good:#8ef0c5;--bad:#ff9d9d;--violet:#c8b6ff}
-*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:radial-gradient(circle at 52% 12%,#153447 0,#07131d 42%,#03090d 100%);color:var(--fg);font:13px/1.35 Inter,system-ui,-apple-system,Segoe UI,sans-serif}body{padding:10px}.app{max-width:1680px;margin:auto;display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:10px}.card{background:linear-gradient(180deg,rgba(13,31,43,.97),rgba(6,16,24,.985));border:1px solid #1d3b4d;border-radius:17px;box-shadow:0 16px 50px #0007,inset 0 1px 0 #ffffff0a}.main{padding:12px}.top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin:2px 4px 10px}.top h1{margin:0;font-size:19px}.sub{color:var(--muted);font-size:11px;max-width:840px}.tag{font-size:10px;text-transform:uppercase;letter-spacing:.08em;padding:5px 8px;border-radius:999px;border:1px solid #42677a;color:#b7e9ff;background:#0a2836;white-space:nowrap}.grid{display:grid;grid-template-columns:1.1fr 1fr;grid-auto-rows:minmax(340px,auto);gap:10px}.vizcard{position:relative;min-height:340px;border:1px solid #19394b;border-radius:15px;background:#06121aaa;overflow:hidden}.viztitle{position:absolute;z-index:4;left:12px;top:10px;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#9fbecd}.viztitle b{color:#fff}.viz{width:100%;height:100%;display:block}.history{margin-top:10px;border:1px solid #19394b;border-radius:15px;background:#06121acc;padding:12px}.history h3{margin:0 0 10px;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#9fbecd}.rail{display:flex;gap:8px;overflow:auto;padding-bottom:4px}.event{min-width:135px;padding:8px;border:1px solid #1d3f51;border-radius:10px;background:#081720}.event b{display:block;font-size:11px}.event span{font-size:9px;color:#7897a5}.side{padding:11px;display:flex;flex-direction:column;gap:9px}.section{background:#07141daa;border:1px solid #183646;border-radius:13px;padding:11px}.section h2{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#a2c1cf;margin:0 0 9px}.kv{display:grid;grid-template-columns:1fr auto;gap:8px;padding:4px 0;border-bottom:1px solid #ffffff08;font-variant-numeric:tabular-nums}.kv:last-child{border:0}.kv span:first-child{color:var(--muted)}.control{margin:8px 0}.control label{display:flex;justify-content:space-between;gap:8px;color:#b9d1dc;margin-bottom:3px}.control input[type=range]{width:100%;accent-color:#70d8ff}.row{display:flex;gap:6px}.row>*{flex:1}button,select,input[type=number]{background:#0c2230;color:var(--fg);border:1px solid #2a5267;border-radius:9px;padding:7px 8px}button{cursor:pointer}.note{font-size:10px;color:#7897a5;line-height:1.45;margin:7px 0 0}.pill{display:inline-block;padding:3px 6px;border-radius:999px;border:1px solid #2b5468;font-size:9px;text-transform:uppercase;letter-spacing:.06em}.good{color:var(--good)}.bad{color:var(--bad)}.warm{color:var(--warm)}.violet{color:var(--violet)}a{color:#a8e5ff}.meter{height:7px;background:#102935;border-radius:999px;overflow:hidden;margin:3px 0 7px}.meter i{display:block;height:100%;background:linear-gradient(90deg,#66cfff,#d8f5ff)}
-@media(max-width:980px){.app{grid-template-columns:1fr}.grid{grid-template-columns:1fr}.side{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.section:first-child{grid-column:1/-1}}
-@media(max-width:600px){body{padding:5px}.grid{grid-auto-rows:minmax(310px,auto)}.side{grid-template-columns:1fr}.tag{display:none}}
-</style>
-</head>
-<body>
-<div class="app">
-<main class="card main">
-  <div class="top"><div><h1>Supercooled Liquid Boundary Laboratory</h1><div class="sub">Milestone 1 → 2 handoff: keep the activated droplet as the same thermodynamic object below 0 °C. Separate water saturation, ice saturation, solution water activity, liquid→ice chemical-potential drive, and the homogeneous-nucleation coordinate before adding any empirical freezing-rate law.</div></div><div class="tag">metastable liquid boundary</div></div>
-  <div class="grid">
-    <section class="vizcard"><div class="viztitle"><b>T–a<sub>w</sub> phase-state surface</b> · liquid/ice thermodynamics</div><svg id="phase" class="viz" viewBox="0 0 680 440"></svg></section>
-    <section class="vizcard"><div class="viztitle"><b>S<sub>w</sub> vs S<sub>i</sub></b> · same vapor, two reference surfaces</div><svg id="sat" class="viz" viewBox="0 0 620 440"></svg></section>
-    <section class="vizcard"><div class="viztitle"><b>Cooling trajectory</b> · water activity + Δa<sub>w</sub></div><svg id="traj" class="viz" viewBox="0 0 680 440"></svg></section>
-    <section class="vizcard"><div class="viztitle"><b>Droplet state</b> · dry core, water shell, phase budget</div><svg id="drop" class="viz" viewBox="0 0 620 440"></svg></section>
-  </div>
-  <section class="history"><h3>Boundary events</h3><div id="rail" class="rail"></div></section>
-</main>
-
-<aside class="card side">
-  <section class="section">
-    <h2>Supercool experiment</h2>
-    <div class="row"><button id="play">▶ Play</button><button id="step">Step</button><button id="reset">Reset</button></div>
-    <div class="control"><label><span>cooling rate</span><b id="coolOut">6 K min⁻¹</b></label><input id="cool" type="range" min="0.5" max="30" step="0.5" value="6"></div>
-    <div class="control"><label><span>target T</span><b id="targetOut">−38 °C</b></label><input id="target" type="range" min="-55" max="-2" step="1" value="-38"></div>
-    <div class="control"><label><span>initial wet D</span><b id="wetOut">5.00 µm</b></label><input id="wet" type="range" min="0.5" max="20" step="0.1" value="5"></div>
-    <div class="control"><label><span>κ hygroscopicity</span><b id="kOut">0.30</b></label><input id="k" type="range" min="0.02" max="1.4" step="0.01" value="0.30"></div>
-    <p class="note">Driver: cool at fixed vapor partial pressure, starting water-saturated at 0 °C. This is a controlled reservoir experiment, not yet a closed rising parcel.</p>
-  </section>
-
-  <section class="section">
-    <h2>Current thermodynamic state</h2>
-    <div class="kv"><span>T</span><b id="Tnow">—</b></div>
-    <div class="kv"><span>a<sub>w</sub></span><b id="aw">—</b></div>
-    <div class="kv"><span>a<sub>w</sub><sup>i</sup>(T)</span><b id="awi">—</b></div>
-    <div class="kv"><span>Δa<sub>w</sub></span><b id="daw">—</b></div>
-    <div class="kv"><span>S<sub>w</sub></span><b id="Sw">—</b></div>
-    <div class="kv"><span>S<sub>i</sub></span><b id="Si">—</b></div>
-    <div class="kv"><span>Δμ liquid−ice</span><b id="dmu">—</b></div>
-    <div class="kv"><span>regime</span><b id="regime">—</b></div>
-  </section>
-
-  <section class="section">
-    <h2>Homogeneous nucleation coordinate</h2>
-    <div class="kv"><span>classic Δa<sub>w</sub> window</span><b>0.26…0.34</b></div>
-    <div class="kv"><span>inside coordinate window?</span><b id="koop">—</b></div>
-    <div class="kv"><span>empirical J model</span><b class="warm">not loaded</b></div>
-    <p class="note">Koop et al. showed homogeneous nucleation of aqueous droplets organizes by water activity rather than solute identity. We expose that coordinate here but do not smuggle in an undocumented rate fit.</p>
-  </section>
-
-  <section class="section">
-    <h2>Hazard sandbox · exact once J is known</h2>
-    <label class="control"><span>log₁₀ J [m⁻³ s⁻¹]</span><input id="logJ" type="number" value="14" min="0" max="40" step="1"></label>
-    <label class="control"><span>observation window [s]</span><input id="obs" type="number" value="1" min="0.001" max="1000" step="0.1"></label>
-    <div class="kv"><span>one-droplet freeze probability</span><b id="prob">—</b></div>
-    <div class="meter"><i id="probbar"></i></div>
-    <p class="note">This box does not claim that the chosen J belongs to the current thermodynamic point. It only demonstrates the exact Poisson conversion P=1−exp(−JVΔt).</p>
-  </section>
-
-  <section class="section">
-    <h2>Boundary discipline</h2>
-    <span class="pill">thermodynamic</span> Murphy–Koop vapor pressures, κ-water activity, liquid/ice chemical potential.<br><br>
-    <span class="pill">coordinate</span> Koop Δa<sub>w</sub> homogeneous-freezing organization.<br><br>
-    <span class="pill">deferred</span> empirical homogeneous J, heterogeneous INP, pore freezing, ice embryo geometry.
-    <p class="note"><a href="./index.html">← activation laboratory</a></p>
-  </section>
-</aside>
+:root{--bg:#061019;--panel:#0b1822;--line:#214356;--fg:#edf8fd;--muted:#8faeba;--ice:#a8e5ff;--water:#6dcfff;--warm:#ffd28d;--good:#8ef0c5;--bad:#ff9d9d;--violet:#c8b6ff}*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:radial-gradient(circle at 52% 12%,#153447 0,#07131d 42%,#03090d 100%);color:var(--fg);font:13px/1.35 Inter,system-ui,-apple-system,Segoe UI,sans-serif}body{padding:10px}.app{max-width:1740px;margin:auto;display:grid;grid-template-columns:minmax(0,1fr) 390px;gap:10px}.card{background:linear-gradient(180deg,rgba(13,31,43,.97),rgba(6,16,24,.985));border:1px solid #1d3b4d;border-radius:17px;box-shadow:0 16px 50px #0007,inset 0 1px 0 #ffffff0a}.main{padding:12px}.top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin:2px 4px 10px}.top h1{margin:0;font-size:19px}.sub{color:var(--muted);font-size:11px;max-width:920px}.tag{font-size:10px;text-transform:uppercase;letter-spacing:.08em;padding:5px 8px;border-radius:999px;border:1px solid #42677a;color:#b7e9ff;background:#0a2836;white-space:nowrap}.grid{display:grid;grid-template-columns:1.08fr 1fr;grid-auto-rows:minmax(330px,auto);gap:10px}.vizcard{position:relative;min-height:330px;border:1px solid #19394b;border-radius:15px;background:#06121aaa;overflow:hidden}.viztitle{position:absolute;z-index:4;left:12px;top:10px;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#9fbecd}.viztitle b{color:#fff}.viz{width:100%;height:100%;display:block}.side{padding:11px;display:flex;flex-direction:column;gap:9px}.section{background:#07141daa;border:1px solid #183646;border-radius:13px;padding:11px}.section h2{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#a2c1cf;margin:0 0 9px}.kv{display:grid;grid-template-columns:1fr auto;gap:8px;padding:4px 0;border-bottom:1px solid #ffffff08;font-variant-numeric:tabular-nums}.kv:last-child{border:0}.kv span:first-child{color:var(--muted)}.control{margin:8px 0}.control label{display:flex;justify-content:space-between;gap:8px;color:#b9d1dc;margin-bottom:3px}.control input[type=range]{width:100%;accent-color:#70d8ff}.row{display:flex;gap:6px}.row>*{flex:1}button,select,input[type=number]{background:#0c2230;color:var(--fg);border:1px solid #2a5267;border-radius:9px;padding:7px 8px}button{cursor:pointer}.note{font-size:10px;color:#7897a5;line-height:1.45;margin:7px 0 0}.good{color:var(--good)}.bad{color:var(--bad)}.warm{color:var(--warm)}.violet{color:var(--violet)}a{color:#a8e5ff}.history{margin-top:10px;border:1px solid #19394b;border-radius:15px;background:#06121acc;padding:12px}.rail{display:flex;gap:8px;overflow:auto}.event{min-width:145px;padding:8px;border:1px solid #1d3f51;border-radius:10px;background:#081720}.event b{display:block;font-size:11px}.event span{font-size:9px;color:#7897a5}
+@media(max-width:1020px){.app{grid-template-columns:1fr}.grid{grid-template-columns:1fr}.side{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.section:first-child{grid-column:1/-1}}@media(max-width:620px){body{padding:5px}.side{grid-template-columns:1fr}.tag{display:none}}
+</style></head><body><div class="app">
+<main class="card main"><div class="top"><div><h1>Supercooled Feedback Laboratory</h1><div class="sub">Activated droplet continued below 0 °C with conserved water + solute inventory, evolving composition, IAPWS supercooled-water properties, Laplace pressure, pressure-shifted liquid–ice equilibrium, and vapor-growth feedback.</div></div><div class="tag">Milestone 1 → 2 boundary</div></div>
+<div class="grid">
+<section class="vizcard"><div class="viztitle"><b>Thermodynamic feedback</b> · T, D, a<sub>w</sub>, Δp<sub>L</sub></div><svg id="feedback" class="viz" viewBox="0 0 700 440"></svg></section>
+<section class="vizcard"><div class="viztitle"><b>Liquid properties</b> · IAPWS G12-15</div><svg id="props" class="viz" viewBox="0 0 650 440"></svg></section>
+<section class="vizcard"><div class="viztitle"><b>Liquid–ice state</b> · pressure-adjusted a<sub>w</sub><sup>i</sup></div><svg id="phase" class="viz" viewBox="0 0 700 440"></svg></section>
+<section class="vizcard"><div class="viztitle"><b>Droplet object</b> · conserved inventories + budgets</div><svg id="drop" class="viz" viewBox="0 0 650 440"></svg></section>
 </div>
-
+<section class="history"><div class="rail" id="rail"></div></section></main>
+<aside class="card side">
+<section class="section"><h2>Experiment</h2><div class="row"><button id="play">▶ Play</button><button id="step">Step</button><button id="reset">Reset</button></div>
+<div class="control"><label><span>cooling rate</span><b id="coolOut">6 K min⁻¹</b></label><input id="cool" type="range" min="0.5" max="20" step="0.5" value="6"></div>
+<div class="control"><label><span>target T</span><b id="targetOut">−30 °C</b></label><input id="target" type="range" min="-45" max="-2" step="1" value="-30"></div>
+<div class="control"><label><span>initial wet D</span><b id="wetOut">5.0 µm</b></label><input id="wet" type="range" min="0.5" max="12" step="0.1" value="5"></div>
+<div class="control"><label><span>effective van't Hoff ν</span><b id="nuOut">3.0</b></label><input id="nu" type="range" min="1" max="5" step="0.1" value="3"></div>
+<div class="control"><label><span>osmotic coefficient φ</span><b id="phiOut">1.00</b></label><input id="phi" type="range" min="0.5" max="1.4" step="0.01" value="1"></div>
+<p class="note">Default effective solute uses 132.14 g mol⁻¹ and 1770 kg m⁻³ as an explicit placeholder composition. Change ν and φ to explore non-ideal effective particle counts; this is no longer fixed κ.</p></section>
+<section class="section"><h2>Current state</h2><div class="kv"><span>T</span><b id="T">—</b></div><div class="kv"><span>wet diameter</span><b id="D">—</b></div><div class="kv"><span>water mass</span><b id="mw">—</b></div><div class="kv"><span>a<sub>w</sub></span><b id="aw">—</b></div><div class="kv"><span>effective κ</span><b id="keff">—</b></div><div class="kv"><span>S<sub>w</sub></span><b id="Sw">—</b></div><div class="kv"><span>S<sub>i</sub></span><b id="Si">—</b></div><div class="kv"><span>d m<sub>w</sub>/dt</span><b id="mdot">—</b></div></section>
+<section class="section"><h2>Laplace + liquid/ice</h2><div class="kv"><span>Δp<sub>Laplace</sub></span><b id="lap">—</b></div><div class="kv"><span>p<sub>liquid</sub></span><b id="pl">—</b></div><div class="kv"><span>a<sub>w</sub><sup>i</sup> reference</span><b id="awi0">—</b></div><div class="kv"><span>a<sub>w</sub><sup>i</sup> pressure-shifted</span><b id="awip">—</b></div><div class="kv"><span>Δμ liquid−ice</span><b id="dmu">—</b></div><p class="note">Bulk pressure shift uses full IAPWS liquid molar volume and a flagged constant ice-density approximation. Ice-embryo γ<sub>il</sub>/curvature is still Milestone 2.</p></section>
+<section class="section"><h2>IAPWS supercooled water</h2><div class="kv"><span>ρ</span><b id="rho">—</b></div><div class="kv"><span>c<sub>p</sub></span><b id="cp">—</b></div><div class="kv"><span>α<sub>p</sub></span><b id="alpha">—</b></div><div class="kv"><span>κ<sub>T</sub></span><b id="kt">—</b></div><div class="kv"><span>sound speed</span><b id="sound">—</b></div><div class="kv"><span>IAPWS range</span><b id="range">—</b></div><div class="kv"><span>surface tension status</span><b id="sigmaStatus">—</b></div></section>
+<section class="section"><h2>Scientific boundary</h2><p class="note"><span class="good">Reference:</span> Murphy–Koop vapor pressures + IAPWS G12-15 liquid EOS.<br><span class="violet">Composition:</span> conserved solute/water with explicit activity model.<br><span class="warm">Approximation:</span> ice molar volume currently ρ=917 kg m⁻³; liquid–ice interfacial embryo pressure not yet modeled.<br><br><a href="./index.html">← activation lab</a></p></section>
+</aside></div>
 <script type="module">
-import {saturationVaporPressureWaterMK,saturationVaporPressureIceMK,waterActivityKappa} from './solver/thermo.js';
-import {iceEquilibriumWaterActivity,supercooledState,makePhaseStateSurface,freezingProbabilityFromRate} from './solver/supercool.js';
-
-const $=id=>document.getElementById(id),NS='http://www.w3.org/2000/svg';
-const el=(tag,a={})=>{const n=document.createElementNS(NS,tag);for(const[k,v]of Object.entries(a))n.setAttribute(k,v);return n};
-const path=p=>p.map((q,i)=>(i?'L':'M')+q[0].toFixed(2)+' '+q[1].toFixed(2)).join(' ');
-const dryD=80e-9;
-let running=false,last=performance.now();
-let state={t:0,T:273.15,D:5e-6,k:.3,cooling:6,target:235.15,e0:saturationVaporPressureWaterMK(273.15),history:[],trajectory:[]};
-
-function reset(){
-  state={t:0,T:273.15,D:+$('wet').value*1e-6,k:+$('k').value,cooling:+$('cool').value,target:+$('target').value+273.15,e0:saturationVaporPressureWaterMK(273.15),history:[],trajectory:[]};
-  running=false;$('play').textContent='▶ Play';sample(true);render();
-}
-function current(){
-  const Sw=state.e0/saturationVaporPressureWaterMK(state.T);
-  return supercooledState({T:state.T,D:state.D,Dd:dryD,kappaHyg:state.k,ambientSw:Sw});
-}
-function event(key,label,detail){if(state.history.some(x=>x.key===key))return;state.history.push({key,label,detail,t:state.t,T:state.T});}
-function sample(force=false){
-  const s=current();
-  if(state.T<273.15)event('below0','sub-zero liquid','Droplet entered the supercooled temperature domain.');
-  if(s.ambientSi>1)event('iceSat','ice-supersaturated vapor','Ambient vapor became supersaturated relative to ice.');
-  if(s.metastableLiquid)event('meta','liquid metastable to ice','Bulk solution chemical potential now favors ice while liquid persists metastably.');
-  if(s.inKoopActivityWindow&&s.inClassicKoopTemperatureRange)event('koop','Δa_w coordinate window','State entered the classic homogeneous-nucleation water-activity coordinate window.');
-  const last=state.trajectory.at(-1);if(force||!last||state.t-last.t>.15)state.trajectory.push({t:state.t,T:state.T,...s});
-  return s;
-}
-function step(dt=.1){
-  state.t+=dt;state.T=Math.max(state.target,state.T-state.cooling*dt/60);sample();render();
-}
-function frame(now){const dt=Math.min(.08,(now-last)/1000);last=now;if(running)step(dt);requestAnimationFrame(frame)}
-
-function phasePlot(){
-  const svg=$('phase');svg.replaceChildren();const x0=70,y0=390,w=560,h=330,Tmin=205,Tmax=275,awMin=.55,awMax=1;
-  const X=T=>x0+(T-Tmin)/(Tmax-Tmin)*w,Y=aw=>y0-(aw-awMin)/(awMax-awMin)*h;
-  for(let T=210;T<=270;T+=10){svg.append(el('line',{x1:X(T),y1:y0-h,x2:X(T),y2:y0,stroke:'#163547','stroke-width':1}));const tx=el('text',{x:X(T),y:y0+18,fill:'#6f91a1','font-size':10,'text-anchor':'middle'});tx.textContent=(T-273.15).toFixed(0)+'°';svg.append(tx)}
-  for(let a=.6;a<=1.001;a+=.1){svg.append(el('line',{x1:x0,y1:Y(a),x2:x0+w,y2:Y(a),stroke:'#163547','stroke-width':1}));const tx=el('text',{x:x0-8,y:Y(a)+3,fill:'#6f91a1','font-size':10,'text-anchor':'end'});tx.textContent=a.toFixed(1);svg.append(tx)}
-  const line=[];for(let i=0;i<180;i++){const T=Tmin+(Tmax-Tmin)*i/179;line.push([X(T),Y(iceEquilibriumWaterActivity(T))])}svg.append(el('path',{d:path(line),fill:'none',stroke:'#a8e5ff','stroke-width':2.5}));
-  const low=[],high=[];for(let i=0;i<180;i++){const T=Tmin+(Tmax-Tmin)*i/179,awi=iceEquilibriumWaterActivity(T);if(T<=240){low.push([X(T),Y(Math.min(1,awi+.26))]);high.push([X(T),Y(Math.min(1,awi+.34))])}}if(low.length){svg.append(el('path',{d:path([...low,...high.reverse()])+' Z',fill:'#c8b6ff18',stroke:'none'}))}
-  const tr=state.trajectory.map(p=>[X(p.T),Y(p.aw)]);if(tr.length>1)svg.append(el('path',{d:path(tr),fill:'none',stroke:'#ffd28d','stroke-width':2.3}));
-  const s=current();svg.append(el('circle',{cx:X(state.T),cy:Y(s.aw),r:6,fill:'#fff',stroke:'#ffd28d','stroke-width':3}));
-  const a=el('text',{x:x0+w-4,y:y0-h+16,fill:'#a8e5ff','font-size':10,'text-anchor':'end'});a.textContent='a_w^i(T): liquid/ice equilibrium';svg.append(a);
-  const b=el('text',{x:x0+w-4,y:y0-h+31,fill:'#c8b6ff','font-size':10,'text-anchor':'end'});b.textContent='shaded: Δa_w 0.26–0.34 (coordinate only)';svg.append(b);
-}
-function saturationPlot(){
-  const svg=$('sat');svg.replaceChildren();const x0=62,y0=386,w=500,h=326,Tmin=225,Tmax=274;const X=T=>x0+(T-Tmin)/(Tmax-Tmin)*w;const vals=[];for(let i=0;i<180;i++){const T=Tmin+(Tmax-Tmin)*i/179,e=state.e0,Sw=e/saturationVaporPressureWaterMK(T),Si=e/saturationVaporPressureIceMK(T);vals.push({T,Sw,Si})}const ymax=Math.min(3,Math.max(1.2,...vals.map(v=>v.Si))*1.05),Y=S=>y0-(S-.8)/(ymax-.8)*h;
-  [1,1.2,1.5,2,2.5].filter(v=>v<ymax).forEach(v=>{svg.append(el('line',{x1:x0,y1:Y(v),x2:x0+w,y2:Y(v),stroke:'#173747'}));const t=el('text',{x:x0-7,y:Y(v)+3,fill:'#7897a5','font-size':10,'text-anchor':'end'});t.textContent=v.toFixed(1);svg.append(t)});
-  svg.append(el('path',{d:path(vals.map(v=>[X(v.T),Y(v.Sw)])),fill:'none',stroke:'#6dcfff','stroke-width':2.3}));svg.append(el('path',{d:path(vals.map(v=>[X(v.T),Y(v.Si)])),fill:'none',stroke:'#a8e5ff','stroke-width':2.3}));
-  const s=current();svg.append(el('circle',{cx:X(state.T),cy:Y(s.ambientSw),r:5,fill:'#6dcfff'}));svg.append(el('circle',{cx:X(state.T),cy:Y(s.ambientSi),r:5,fill:'#fff',stroke:'#a8e5ff','stroke-width':2}));
-  const l=el('text',{x:x0+8,y:y0-h+20,fill:'#6dcfff','font-size':10});l.textContent='S_w';svg.append(l);const li=el('text',{x:x0+44,y:y0-h+20,fill:'#a8e5ff','font-size':10});li.textContent='S_i';svg.append(li);
-}
-function trajectoryPlot(){
-  const svg=$('traj');svg.replaceChildren();const x0=68,y0=386,w=550,h=326,Tmin=225,Tmax=274,X=T=>x0+(T-Tmin)/(Tmax-Tmin)*w,Y=v=>y0-(v+.05)/(.42)*h;
-  [-.05,0,.1,.2,.3].forEach(v=>{svg.append(el('line',{x1:x0,y1:Y(v),x2:x0+w,y2:Y(v),stroke:'#173747'}));const t=el('text',{x:x0-8,y:Y(v)+3,fill:'#7897a5','font-size':10,'text-anchor':'end'});t.textContent=v.toFixed(2);svg.append(t)});
-  const daw=state.trajectory.map(p=>[X(p.T),Y(p.deltaAw)]);if(daw.length>1)svg.append(el('path',{d:path(daw),fill:'none',stroke:'#c8b6ff','stroke-width':2.5}));
-  const awdev=state.trajectory.map(p=>[X(p.T),Y(1-p.aw)]);if(awdev.length>1)svg.append(el('path',{d:path(awdev),fill:'none',stroke:'#6dcfff','stroke-width':2}));
-  const s=current();svg.append(el('circle',{cx:X(state.T),cy:Y(s.deltaAw),r:6,fill:'#fff',stroke:'#c8b6ff','stroke-width':2}));
-  const t1=el('text',{x:x0+8,y:y0-h+20,fill:'#c8b6ff','font-size':10});t1.textContent='Δa_w = a_w − a_w^i';svg.append(t1);const t2=el('text',{x:x0+160,y:y0-h+20,fill:'#6dcfff','font-size':10});t2.textContent='1 − a_w (solute depression)';svg.append(t2);
-}
-function dropletPlot(){
-  const svg=$('drop');svg.replaceChildren();const s=current(),cx=190,cy=220;const outer=82,core=Math.max(8,outer*Math.cbrt((dryD/state.D)**3));
-  svg.append(el('circle',{cx,cy,r:outer+18,fill:'#6dcfff0d',stroke:'#6dcfff22','stroke-width':1}));svg.append(el('circle',{cx,cy,r:outer,fill:'#6dcfff33',stroke:'#a8e5ff','stroke-width':2.2}));svg.append(el('circle',{cx,cy,r:core,fill:'#ffd28d88',stroke:'#ffd28d','stroke-width':2}));
-  const rows=[['a_w',s.aw.toFixed(5)],['a_w^i',s.awIce.toFixed(5)],['Δa_w',s.deltaAw.toFixed(5)],['S_i',s.ambientSi.toFixed(4)],['Δμ',(s.deltaMuLiquidMinusIce/1000).toFixed(3)+' kJ mol⁻¹']];rows.forEach((r,i)=>{const y=150+i*34;const a=el('text',{x:330,y,fill:'#8faeba','font-size':11});a.textContent=r[0];svg.append(a);const b=el('text',{x:455,y,fill:'#fff','font-size':12,'font-weight':600});b.textContent=r[1];svg.append(b)});
-  const lab=el('text',{x:cx,y:cy+outer+30,fill:'#7897a5','font-size':10,'text-anchor':'middle'});lab.textContent='same activated droplet, now metastably supercooled';svg.append(lab);
-}
-function renderRail(){const rail=$('rail');rail.replaceChildren();state.history.forEach(e=>{const d=document.createElement('div');d.className='event';d.innerHTML=`<b>${e.label}</b><span>${(e.T-273.15).toFixed(1)} °C · t=${e.t.toFixed(1)} s</span><span>${e.detail}</span>`;rail.append(d)})}
-function render(){
-  const s=sample();phasePlot();saturationPlot();trajectoryPlot();dropletPlot();renderRail();
-  $('Tnow').textContent=(state.T-273.15).toFixed(2)+' °C';$('aw').textContent=s.aw.toFixed(6);$('awi').textContent=s.awIce.toFixed(6);$('daw').textContent=s.deltaAw.toFixed(6);$('Sw').textContent=s.ambientSw.toFixed(5);$('Si').textContent=s.ambientSi.toFixed(5);$('dmu').textContent=(s.deltaMuLiquidMinusIce/1000).toFixed(4)+' kJ mol⁻¹';$('regime').textContent=s.regime.replaceAll('_',' ');$('koop').textContent=s.inKoopActivityWindow&&s.inClassicKoopTemperatureRange?'yes · coordinate entered':'no';
-  const J=10**Math.max(0,Math.min(40,+$('logJ').value||0)),dt=Math.max(.001,+$('obs').value||1),p=freezingProbabilityFromRate(J,state.D,dt);$('prob').textContent=(100*p).toPrecision(4)+' %';$('probbar').style.width=Math.min(100,100*p)+'%';
-}
-$('play').onclick=()=>{running=!running;$('play').textContent=running?'⏸ Pause':'▶ Play'};$('step').onclick=()=>step(1);$('reset').onclick=reset;
-$('cool').oninput=e=>{state.cooling=+e.target.value;$('coolOut').textContent=state.cooling+' K min⁻¹'};$('target').oninput=e=>{state.target=+e.target.value+273.15;$('targetOut').textContent=(+e.target.value).toFixed(0)+' °C'};$('wet').onchange=reset;$('k').onchange=reset;$('logJ').oninput=render;$('obs').oninput=render;
-reset();requestAnimationFrame(frame);
-</script>
-</body>
-</html>
+import {saturationVaporPressureWaterMK} from './solver/thermo.js';
+import {DEFAULT_SOLUTE,soluteInventoryFromDryParticle,waterMassFromWetDiameter,integrateWaterMassStep} from './solver/composition.js';
+import {supercooledState} from './solver/supercool.js';
+const $=id=>document.getElementById(id),NS='http://www.w3.org/2000/svg',Dd=80e-9,pAir=101325;const el=(tag,a={})=>{const n=document.createElementNS(NS,tag);Object.entries(a).forEach(([k,v])=>n.setAttribute(k,v));return n};const pth=a=>a.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');let running=false,last=performance.now(),s;
+function solute(){return {...DEFAULT_SOLUTE,vantHoff:+$('nu').value,osmoticCoefficient:+$('phi').value}}
+function reset(){const T=273.15,D=+$('wet').value*1e-6,inv=soluteInventoryFromDryParticle(Dd,solute()),init=waterMassFromWetDiameter({D,Dd,T,pAir,inventory:inv});s={t:0,T,target:+$('target').value+273.15,cooling:+$('cool').value,waterMass:init.waterMass,inventory:inv,e0:saturationVaporPressureWaterMK(T),traj:[],events:[],massRate:0};running=false;$('play').textContent='▶ Play';sample(true);render()}
+function current(){const Sw=s.e0/saturationVaporPressureWaterMK(s.T);return supercooledState({T:s.T,ambientSw:Sw,Dd,waterMass:s.waterMass,pAir,inventory:s.inventory})}
+function event(k,label){if(!s.events.some(e=>e.k===k))s.events.push({k,label,t:s.t,T:s.T})}
+function sample(force=false){const q=current();if(q.T<273.15)event('subzero','sub-zero liquid');if(q.ambientSi>1)event('Si','ice-supersaturated vapor');if(q.metastableLiquid)event('meta','liquid metastable to ice');if(!q.surfaceTension.referenceSupported)event('sigma','surface-tension extrapolation');if(!q.liquidProperties.insideRecommendedMetastableRange)event('range','outside IAPWS metastable range');const prev=s.traj.at(-1);if(force||!prev||s.t-prev.t>.12)s.traj.push({t:s.t,...q,massRate:s.massRate});return q}
+function step(dt=.05){s.t+=dt;s.T=Math.max(s.target,s.T-s.cooling*dt/60);const u=integrateWaterMassStep({waterMass:s.waterMass,Dd,T:s.T,pAir,vaporPressure:s.e0,inventory:s.inventory,dt});s.waterMass=u.waterMass;s.massRate=u.massRate;sample();render()}
+function frame(now){const dt=Math.min(.07,(now-last)/1000);last=now;if(running)step(dt);requestAnimationFrame(frame)}
+function axes(svg,x0,y0,w,h){svg.append(el('line',{x1:x0,y1:y0,x2:x0+w,y2:y0,stroke:'#35586a'}));svg.append(el('line',{x1:x0,y1:y0,x2:x0,y2:y0-h,stroke:'#35586a'}))}function line(svg,pts,stroke,width=2){svg.append(el('path',{d:pth(pts),fill:'none',stroke,'stroke-width':width,'stroke-linejoin':'round'}))}
+function feedback(){const svg=$('feedback');svg.replaceChildren();const tr=s.traj,x0=62,y0=382,w=605,h=310;axes(svg,x0,y0,w,h);if(tr.length<2)return;const tmax=Math.max(1,tr.at(-1).t),dmax=Math.max(...tr.map(q=>q.D))*1e6,lapmax=Math.max(...tr.map(q=>q.laplacePressure))/1000;const X=t=>x0+t/tmax*w,Yd=d=>y0-d/dmax*h*.92,Yaw=a=>y0-(a-.8)/.2*h,Ylap=l=>y0-l/Math.max(1,lapmax)*h*.9;line(svg,tr.map(q=>[X(q.t),Yd(q.D*1e6)]),'#6dcfff',3);line(svg,tr.map(q=>[X(q.t),Yaw(q.aw)]),'#8ef0c5',2);line(svg,tr.map(q=>[X(q.t),Ylap(q.laplacePressure/1000)]),'#ffd28d',2);[['D','#6dcfff'],['a_w','#8ef0c5'],['ΔpL','#ffd28d']].forEach(([t,c],i)=>{const tx=el('text',{x:95+i*80,y:35,fill:c,'font-size':11});tx.textContent=t;svg.append(tx)})}
+function props(){const svg=$('props');svg.replaceChildren();const tr=s.traj,x0=62,y0=382,w=555,h=310;axes(svg,x0,y0,w,h);if(tr.length<2)return;const Tmin=Math.min(...tr.map(q=>q.T)),Tmax=273.15,X=T=>x0+(Tmax-T)/Math.max(1,Tmax-Tmin)*w;const norm=(arr,v)=>{const mn=Math.min(...arr),mx=Math.max(...arr);return y0-(v-mn)/Math.max(1e-15,mx-mn)*h*.88};const rho=tr.map(q=>q.liquidProperties.rho),cp=tr.map(q=>q.liquidProperties.cp),a=tr.map(q=>q.liquidProperties.alphaP);line(svg,tr.map(q=>[X(q.T),norm(rho,q.liquidProperties.rho)]),'#6dcfff',3);line(svg,tr.map(q=>[X(q.T),norm(cp,q.liquidProperties.cp)]),'#c8b6ff',2);line(svg,tr.map(q=>[X(q.T),norm(a,q.liquidProperties.alphaP)]),'#ffd28d',2);const tx=el('text',{x:84,y:34,fill:'#9fbecd','font-size':11});tx.textContent='normalized ρ / cp / αp vs cooling';svg.append(tx)}
+function phase(){const svg=$('phase');svg.replaceChildren();const tr=s.traj,x0=65,y0=382,w=600,h=310;axes(svg,x0,y0,w,h);if(tr.length<2)return;const Tmin=Math.min(...tr.map(q=>q.T)),X=T=>x0+(273.15-T)/Math.max(1,273.15-Tmin)*w,Y=a=>y0-(a-.55)/.45*h;line(svg,tr.map(q=>[X(q.T),Y(q.aw)]),'#6dcfff',3);line(svg,tr.map(q=>[X(q.T),Y(q.awIceReference)]),'#7897a5',2);line(svg,tr.map(q=>[X(q.T),Y(q.awIce)]),'#ffd28d',2);const q=tr.at(-1);svg.append(el('circle',{cx:X(q.T),cy:Y(q.aw),r:6,fill:'#fff'}));const tx=el('text',{x:82,y:34,fill:'#9fbecd','font-size':11});tx.textContent='a_w droplet / ice eq reference / pressure-shifted';svg.append(tx)}
+function drop(){const svg=$('drop');svg.replaceChildren();const q=current(),cx=220,cy=220,r=120,rd=Math.max(8,r*Dd/q.D);svg.append(el('circle',{cx,cy,r,fill:'#6dcfff22',stroke:'#a8e5ff','stroke-width':3}));svg.append(el('circle',{cx,cy,r:rd,fill:'#ffd28d',stroke:'#fff1c7','stroke-width':2}));const rows=[['water mass',(q.waterMass*1e12).toFixed(3)+' ng'],['solute mass',(q.drop.inventory.dryMass*1e15).toFixed(3)+' pg'],['water mass frac',(q.composition.waterMassFraction*100).toFixed(4)+' %'],['molality',Number.isFinite(q.composition.molality)?q.composition.molality.toExponential(2)+' mol kg⁻¹':'∞'],['Kelvin ln term',q.kelvinLn.toExponential(2)],['κ effective',q.effectiveKappa.toFixed(3)]];rows.forEach((r0,i)=>{const t=el('text',{x:390,y:105+i*42,fill:i<2?'#edf8fd':'#9fbecd','font-size':12});t.textContent=r0[0]+': '+r0[1];svg.append(t)})}
+function sidebar(){const q=current();$('T').textContent=(q.T-273.15).toFixed(2)+' °C';$('D').textContent=(q.D*1e6).toFixed(3)+' µm';$('mw').textContent=(q.waterMass*1e12).toFixed(4)+' ng';$('aw').textContent=q.aw.toFixed(8);$('keff').textContent=q.effectiveKappa.toFixed(4);$('Sw').textContent=q.ambientSw.toFixed(4);$('Si').textContent=q.ambientSi.toFixed(4);$('mdot').textContent=(s.massRate*1e15).toExponential(2)+' pg s⁻¹';$('lap').textContent=(q.laplacePressure/1000).toFixed(2)+' kPa';$('pl').textContent=(q.pLiquid/1000).toFixed(2)+' kPa';$('awi0').textContent=q.awIceReference.toFixed(6);$('awip').textContent=q.awIce.toFixed(6);$('dmu').textContent=q.deltaMuLiquidMinusIce.toFixed(2)+' J mol⁻¹';$('rho').textContent=q.liquidProperties.rho.toFixed(3)+' kg m⁻³';$('cp').textContent=q.liquidProperties.cp.toFixed(1)+' J kg⁻¹ K⁻¹';$('alpha').textContent=q.liquidProperties.alphaP.toExponential(3)+' K⁻¹';$('kt').textContent=q.liquidProperties.kappaT.toExponential(3)+' Pa⁻¹';$('sound').textContent=q.liquidProperties.speedSound.toFixed(1)+' m s⁻¹';$('range').textContent=q.liquidProperties.insideRecommendedMetastableRange?'inside':'outside';$('range').className=q.liquidProperties.insideRecommendedMetastableRange?'good':'bad';$('sigmaStatus').textContent=q.surfaceTension.referenceSupported?'supported':'extrapolated';$('sigmaStatus').className=q.surfaceTension.referenceSupported?'good':'warm';$('coolOut').textContent=(+$('cool').value).toFixed(1)+' K min⁻¹';$('targetOut').textContent=(+$('target').value).toFixed(0)+' °C';$('wetOut').textContent=(+$('wet').value).toFixed(1)+' µm';$('nuOut').textContent=(+$('nu').value).toFixed(1);$('phiOut').textContent=(+$('phi').value).toFixed(2)}
+function rail(){const r=$('rail');r.innerHTML='';s.events.forEach(e=>{const d=document.createElement('div');d.className='event';d.innerHTML='<b>'+e.label+'</b><span>t '+e.t.toFixed(1)+' s · '+(e.T-273.15).toFixed(1)+' °C</span>';r.append(d)})}function render(){feedback();props();phase();drop();sidebar();rail()}
+$('play').onclick=()=>{running=!running;$('play').textContent=running?'⏸ Pause':'▶ Play'};$('step').onclick=()=>step(.25);$('reset').onclick=reset;['cool','target','wet','nu','phi'].forEach(id=>$(id).oninput=()=>{if(id==='cool'||id==='target'){s.cooling=+$('cool').value;s.target=+$('target').value+273.15;sidebar()}else reset()});reset();requestAnimationFrame(frame)
+</script></body></html>
