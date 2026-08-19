@@ -1,89 +1,142 @@
-# Physics Instrument v2 — Activation + Supercool Boundary Laboratory
+# Physics Instrument v2 — Activation → Supercooled Feedback Laboratory
 
-Open `app/index.html` for the activation laboratory and `app/supercool.html` for the supercooled-liquid handoff. The legacy single-file flexoelectric snowflake remains at the repository root while the physics-first rebuild advances independently.
+Open `app/index.html` through a local/static HTTP server for the activation laboratory, then `app/supercool.html` for the metastable-liquid handoff. The legacy single-file flexoelectric snowflake remains at repository root while the physics-first rebuild advances independently.
 
 ## Milestone 1 activation laboratory
 
 One synchronized particle state drives:
 
 - full Petters–Kreidenweis κ-Köhler equilibrium curve,
-- numerical critical diameter and critical supersaturation,
+- numerical critical diameter and supersaturation,
 - stable and unstable wet-equilibrium branches,
-- state-plane trajectory `(wet diameter, ambient supersaturation)`,
-- molar transfer chemical-potential diagnostic,
-- reversible-work landscape,
-- Maxwell–Mason spherical condensational growth with vapor-diffusion and latent-heat resistances,
+- `(wet diameter, ambient supersaturation)` state trajectory,
+- molar transfer chemical potential `Δμ(l−v)=RT ln(S_eq/S_inf)`,
+- reversible-work landscape `∫ Δμ dN_w`,
+- Maxwell–Mason condensational growth with vapor-diffusion and latent-heat resistances,
 - controlled ambient histories,
-- scrub-able particle trajectory/history,
-- spherical sixfold HexaLens + dense 72-angle mode spectrum,
-- dry-core / water-shell particle visualization,
-- inspectable activation / transport budget.
+- scrub-able particle history,
+- spherical sixfold HexaLens and dense angular mode spectrum.
 
-## Supercooled-liquid boundary laboratory
+## Supercooled feedback laboratory
 
-`app/supercool.html` continues the *same activated droplet* below 0 °C rather than replacing it with an unrelated ice model.
+The activated droplet is continued below 0 °C as the same physical object rather than replaced by an unrelated ice mode.
 
-It now exposes separately:
+### Conserved state
 
-- saturation ratio with respect to liquid water `S_w`,
-- saturation ratio with respect to ice `S_i`,
-- κ-derived solution water activity `a_w`,
-- ice-equilibrium water activity `a_w^i(T) = p_i,sat(T)/p_w,sat(T)`,
-- `Δa_w = a_w - a_w^i(T)`,
-- liquid-to-ice chemical-potential drive `Δμ = R T ln[a_w/a_w^i(T)]`,
-- the liquid-stable / supercooled-metastable regime distinction,
-- a T–a_w phase-state surface,
-- fixed-vapor cooling trajectory,
-- separate history events for sub-zero entry, ambient ice supersaturation, liquid metastability, and entry into the classic Koop water-activity coordinate window,
-- exact conversion from an externally supplied volumetric nucleation rate `J` to one-particle freezing probability `P = 1-exp(-J V Δt)`.
+The evolved extensive variable is now **water mass**, with a conserved dry-solute inventory. Wet diameter is derived from:
 
-### Important nucleation boundary
+1. dry-particle volume,
+2. water mass,
+3. pressure- and temperature-dependent liquid density,
+4. Laplace pressure `Δp = 4 σ / D`.
 
-The classic Koop et al. water-activity result is used as a **coordinate system**, not as an undocumented rate law. The current code highlights the traditional `Δa_w` interval 0.26–0.34 and conservatively marks the original deep-supercooling temperature domain, but does not invent a universal `J(Δa_w)` polynomial.
+This separates density-driven size changes from actual condensation/evaporation.
 
-An empirical homogeneous-nucleation-rate parameterization will be added only as a named, documented Milestone-2 plug-in. Heterogeneous ice-nucleating particles, immersion freezing, pore condensation/freezing, and embryo geometry also remain deferred.
+### Composition-derived water activity
 
-## Scientific categories
+`app/solver/composition.js` carries an explicit solute inventory:
 
-### Thermodynamic / reviewed-fit
+- dry density,
+- molar mass,
+- effective van't Hoff factor,
+- osmotic coefficient,
+- selected water-activity model.
 
-- Murphy & Koop saturation vapor pressure over liquid water and ice.
-- IAPWS surface tension of liquid water.
-- Kelvin curvature term.
-- liquid/ice equilibrium water activity from the ratio of ice and liquid saturation vapor pressures.
+The default model is an explicit ideal effective-particle mole-fraction baseline:
 
-### Semi-empirical
+`a_w = n_w / (n_w + ν φ n_s)`.
 
-- Petters–Kreidenweis single-parameter κ representation of water activity / CCN activity.
-- Koop water-activity organization of homogeneous ice nucleation is used as a diagnostic coordinate, not yet as a rate parameterization.
+An exponential osmotic form is also available. `κ_effective` is now a diagnostic inferred from the current `(D,D_d,a_w)` state rather than the source of truth in this laboratory.
+
+The default effective-solute constants are placeholders for experimentation, not a claim about aerosol chemical identity.
+
+### Supercooled-water thermodynamic property layer
+
+`app/solver/supercooled-eos.js` implements the IAPWS G12-15 Gibbs-energy formulation for cold/supercooled liquid water.
+
+The module provides:
+
+- density,
+- isobaric and isochoric heat capacity,
+- thermal expansivity,
+- isothermal compressibility,
+- sound speed,
+- the IAPWS homogeneous-nucleation validity limit.
+
+Density uses the analytic pressure derivative of the IAPWS Gibbs formulation. The remaining response properties are centered numerical derivatives of the same fundamental Gibbs/volume functions, avoiding disconnected empirical property fits.
+
+The regression suite reproduces the published IAPWS verification states at 273.15 K / 0.101325 MPa, 235.15 K / 0.101325 MPa, 250 K / 200 MPa, 200 K / 400 MPa, and 250 K / 400 MPa.
+
+### Laplace pressure + liquid/ice state
+
+Liquid pressure is
+
+`p_l = p_air + 4 σ_lv / D`.
+
+The liquid IAPWS EOS is evaluated at this pressure. The low-pressure liquid/ice equilibrium activity is
+
+`a_w^i(T) = p_i,sat(T) / p_w,sat(T)`.
+
+A first **bulk equal-pressure** correction is included:
+
+`ln a_w^i(T,p) = ln a_w^i(T,p_ref) + (V_i - V_l)(p-p_ref)/(R T)`.
+
+`V_l` comes from IAPWS G12-15. `V_i` is currently an explicitly flagged constant-density Ice-Ih approximation (`ρ_i = 917 kg m⁻³`). The full IAPWS Ice Ih equation of state is the next refinement.
+
+This is not yet the ice-embryo pressure correction. A finite embryo requires its own ice–liquid interfacial energy, geometry, curvature, and internal pressure; those belong to Milestone 2 nucleation physics.
+
+### Surface tension boundary
+
+The IAPWS R1-76(2014) surface-tension equation is used. Its stated supercooled extrapolation support extends only to about −25 °C, so the UI marks deeper-temperature use as an extrapolation rather than silently treating it as reference-quality.
+
+### Water / ice saturation separation
+
+The boundary laboratory keeps distinct:
+
+- ambient `S_w`,
+- ambient `S_i`,
+- droplet surface equilibrium `S_eq`,
+- composition water activity `a_w`,
+- pressure-adjusted ice-equilibrium activity `a_w^i`,
+- `Δa_w = a_w - a_w^i`,
+- liquid-minus-ice chemical-potential drive.
+
+These are different physical statements and are logged as separate events.
+
+### Homogeneous-nucleation boundary
+
+The Koop water-activity coordinate is exposed, together with exact Poisson conversion once a volumetric nucleation rate `J` is supplied:
+
+`P_freeze = 1 - exp(-J V Δt)`.
+
+No undocumented universal `J(T,a_w)` fit is inserted. Empirical homogeneous freezing, heterogeneous INP pathways, pore condensation/freezing, and ice-embryo geometry remain explicit Milestone-2 modules.
+
+## Current model hierarchy
+
+### Reference / reviewed formulation
+
+- Murphy & Koop saturation vapor pressure over supercooled liquid water and ice.
+- IAPWS R1-76 surface tension within its stated range.
+- IAPWS G12-15 supercooled-water Gibbs equation of state.
+
+### Explicit solution model
+
+- conserved dry-solute and water inventories,
+- effective van't Hoff factor and osmotic coefficient,
+- ideal mole-fraction or exponential osmotic water-activity model.
 
 ### Transport approximation
 
-- Maxwell–Mason spherical condensational response.
-- Temperature/pressure-scaled vapor diffusivity and compact air thermal-conductivity / latent-heat approximations.
-- Current external vapor field remains quasi-steady and spherical.
+- quasi-steady Maxwell–Mason spherical condensational growth,
+- quasi-steady spherical external vapor field.
 
-The ambient-history drivers are controlled-reservoir experiments. `cool_fixed_e` cools while holding vapor partial pressure fixed. It is intentionally **not** a complete adiabatic cloud-parcel model because parcel water conservation, vertical dynamics, aerosol population feedback, and supersaturation depletion by a droplet ensemble are not yet solved.
+### Flagged approximation / deferred
 
-## Stability and reversible work
-
-For fixed ambient saturation ratio `S_inf`, roots of
-
-`S_eq(D) = S_inf`
-
-are found numerically. Linearizing `dD/dt ∝ S_inf - S_eq(D)` gives a stable root for positive `dS_eq/dD` and an unstable activation threshold for negative slope. The critical point is the maximum of the full κ-Köhler curve; when `S_inf >= S_crit`, the finite-size activation barrier disappears.
-
-The reversible-work display uses
-
-`dW = R T ln(S_eq/S_inf) dN_w`
-
-with spherical liquid-water content. This is a one-particle controlled-reservoir coordinate, not a molecular ice-nucleation barrier.
-
-## Important sixfold symmetry note
-
-The six arm axes are ideal for the visible HexaLens radial comparison, but they are not sufficient to estimate an `m=6` Fourier mode. At `theta_i=i*pi/3`, `cos(6 theta_i)=1` on every arm, so `m=6` aliases `m=0`. The central mode spectrum therefore samples 72 angular directions.
-
-Milestone 1 remains intentionally spherical. Non-spherical vapor/heat/electric fields must earn any later symmetry breaking.
+- Ice-Ih molar volume currently from constant `ρ_i = 917 kg m⁻³`,
+- surface tension below its stated −25 °C extrapolation range,
+- no ice–liquid embryo curvature/pressure yet,
+- no empirical homogeneous `J`, INP, or pore-freezing rate yet,
+- no non-spherical vapor/heat field yet.
 
 ## Tests
 
@@ -94,14 +147,17 @@ node app/tests/thermo.test.mjs
 node app/tests/activation.test.mjs
 node app/tests/trajectory.test.mjs
 node app/tests/supercool.test.mjs
+node app/tests/supercooled-eos.test.mjs
+node app/tests/composition-feedback.test.mjs
 ```
 
-The suites cover saturation-pressure checkpoints, IAPWS surface tension, numerical κ-Köhler critical behavior, stable/unstable equilibria, reversible-work barrier, Maxwell–Mason resistances, ambient drivers, activation trajectories, liquid/ice water-activity equilibrium, supercooled metastability, ice supersaturation, phase-surface construction, and exact Poisson nucleation-hazard algebra.
+The new tests cover IAPWS published verification points, mass↔diameter inversion, density-driven size feedback at fixed water mass, condensation during cooling at fixed vapor pressure, composition-derived water activity, Laplace pressure, pressure-shifted liquid/ice equilibrium, and preservation of the exact nucleation-hazard algebra.
 
 ## Scientific references
 
 - Petters, M. D. & Kreidenweis, S. M. (2007), *A single parameter representation of hygroscopic growth and cloud condensation nucleus activity*, Atmospheric Chemistry and Physics 7, 1961–1971. DOI: 10.5194/acp-7-1961-2007.
 - Murphy, D. M. & Koop, T. (2005), *Review of the vapour pressures of ice and supercooled water for atmospheric applications*, QJRMS 131, 1539–1565. DOI: 10.1256/qj.04.94.
-- Koop, T., Luo, B., Tsias, A. & Peter, T. (2000), *Water activity as the determinant for homogeneous ice nucleation in aqueous solutions*, Nature 406, 611–614. DOI: 10.1038/35020537.
+- Koop, T. et al. (2000), *Water activity as the determinant for homogeneous ice nucleation in aqueous solutions*, Nature 406, 611–614.
 - IAPWS (2014), *Revised Release on Surface Tension of Ordinary Water Substance*, R1-76(2014).
 - IAPWS (2015), *Guideline on Thermodynamic Properties of Supercooled Water*, G12-15.
+- IAPWS (2009), *Revised Release on the Equation of State 2006 for H2O Ice Ih*, R10-06(2009) — identified as the next solid-phase property module.
