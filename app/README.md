@@ -1,34 +1,84 @@
-# Physics Instrument v2
+# Physics Instrument v2 — Activation Laboratory
 
-Open `app/index.html` through a local/static HTTP server. The legacy single-file flexoelectric snowflake prototype remains at the repository root while the physics-first rebuild is validated.
+Open `app/index.html` through a local/static HTTP server. The legacy single-file flexoelectric snowflake remains at the repository root while the physics-first rebuild advances independently.
 
-## What is real in Milestone 1
+## Milestone 1 is now an activation laboratory
+
+The app no longer stops at drawing a κ-Köhler curve. One synchronized particle state now drives:
+
+- the full Petters–Kreidenweis κ-Köhler equilibrium curve,
+- numerical critical diameter and critical supersaturation,
+- stable and unstable wet-equilibrium branches for the current ambient saturation,
+- a state-plane trajectory `(wet diameter, ambient supersaturation)`,
+- a molar transfer chemical-potential diagnostic `Δμ(l−v)=RT ln(S_eq/S_inf)`,
+- a reversible-work landscape obtained by integrating `Δμ dN_w` along the wet-diameter coordinate,
+- Maxwell–Mason spherical condensational growth with both vapor-diffusion and latent-heat resistances,
+- controlled ambient histories (hold, supersaturation ramp, and cooling at fixed vapor partial pressure),
+- a scrub-able particle trajectory/history,
+- spherical vapor-field radial sampling in the sixfold HexaLens,
+- a dense 72-angle Fourier mode spectrum that correctly distinguishes `m=6` from `m=0`,
+- a dry-core / water-shell particle visualization in the HexaLens center,
+- an inspectable local activation / transport budget.
+
+## Scientific boundary
+
+### Thermodynamic / reviewed-fit
 
 - Murphy & Koop saturation vapor pressure over liquid water and ice.
 - IAPWS surface tension of liquid water.
-- Full Petters–Kreidenweis κ-Köhler equilibrium relation.
-- Numerical search of the full κ-Köhler critical point; the common analytic critical-point formula is retained only as a regression diagnostic.
-- Quasi-steady spherical vapor-diffusion field around the wet particle.
-- Vapor-diffusion-only condensational radius tendency. Latent-heat resistance is deliberately deferred to the coupled vapor/heat field solver so it is not hidden in a magic coefficient.
-- Shared particle state and event history.
-- Six crystallographic radial profiles plus a dense 72-angle Fourier mode decomposition.
-- Inspectable activation budget in log-saturation / chemical-potential coordinates.
+- Kelvin curvature term.
 
-## Important symmetry note
+### Semi-empirical
 
-The six arm axes are ideal for the HexaLens radial comparison, but they are **not sufficient to estimate an m=6 Fourier mode**: at θᵢ=iπ/3, cos(6θᵢ)=1 for every arm, so m=6 aliases the isotropic m=0 component. Therefore the central mode spectrum samples a dense angular ring while the visible instrument remains sixfold.
+- Petters–Kreidenweis single-parameter κ representation of water activity / CCN activity.
+
+### Transport approximation
+
+- Maxwell–Mason spherical condensational response.
+- Temperature/pressure-scaled vapor diffusivity and compact air thermal-conductivity / latent-heat approximations.
+- The current external vapor field is quasi-steady and spherical.
+
+The ambient-history drivers are controlled-reservoir experiments. In particular, `cool_fixed_e` cools while holding vapor partial pressure fixed. It is intentionally **not** called a complete adiabatic cloud-parcel model because it does not yet solve parcel water conservation, vertical dynamics, aerosol population feedback, or supersaturation depletion by a droplet ensemble.
+
+## Stability and reversible work
+
+For a fixed ambient saturation ratio `S_inf`, roots of
+
+`S_eq(D) = S_inf`
+
+are found numerically. Linearizing `dD/dt ∝ S_inf - S_eq(D)` gives:
+
+- positive `dS_eq/dD`: stable wet equilibrium,
+- negative `dS_eq/dD`: unstable activation threshold.
+
+The critical point is the maximum of the full κ-Köhler curve. When `S_inf >= S_crit`, the finite-size activation barrier disappears.
+
+The reversible-work display uses
+
+`dW = R T ln(S_eq/S_inf) dN_w`
+
+with spherical liquid-water content
+
+`dN_w/dD = rho_w π D² / (2 M_w)`.
+
+This is a one-particle thermodynamic coordinate for the controlled reservoir, not a molecular ice-nucleation barrier and not a stochastic activation probability.
+
+## Important sixfold symmetry note
+
+The six arm axes are ideal for the visible HexaLens radial comparison, but they are **not sufficient to estimate an m=6 Fourier mode**. At `theta_i=i*pi/3`, `cos(6 theta_i)=1` on every arm, so `m=6` aliases the isotropic `m=0` component. The central mode spectrum therefore samples 72 angular directions while the visible instrument remains sixfold.
+
+Milestone 1 is intentionally spherical. All six HexaLens profiles should coincide and all nonzero angular residual modes should be numerical zero. Later non-spherical vapor/heat/electric fields earn the right to break that symmetry.
 
 ## Current boundary
 
-The current field is intentionally spherical and neutral. Therefore all six HexaLens profiles coincide and residual angular modes are approximately zero. This is a physics test, not a missing visual effect.
+Still reserved and not faked:
 
-The following are reserved for later milestones and are not faked in Milestone 1:
-
-- freezing / pore-condensation-freezing / ice nucleation,
-- vapor + heat PDE around a non-spherical ice interface,
+- supercooled-droplet freezing / immersion / pore-condensation-freezing pathways,
+- ice nucleation and mass-conserving ice-seed generation,
+- non-spherical coupled vapor + heat field solver,
 - basal/prism attachment kinetics and SDAK,
 - growing 3-D crystal sourced from the interface solver,
-- interface-click physical budget,
+- click-any-facet physical growth budget,
 - electric potential and flexoelectric polarization feedback.
 
 ## Tests
@@ -37,9 +87,21 @@ Run:
 
 ```bash
 node app/tests/thermo.test.mjs
+node app/tests/activation.test.mjs
+node app/tests/trajectory.test.mjs
 ```
 
-The regression suite checks 0 °C liquid/ice saturation pressures, 25 °C surface tension, numerical κ-Köhler critical-point behavior, agreement with the large-particle approximation within a tolerance, and zero net activation budget at the numerical critical point.
+The new tests cover:
+
+- Murphy–Koop saturation-pressure checkpoints,
+- IAPWS surface tension,
+- numerical κ-Köhler critical point,
+- stable/unstable equilibrium branches below critical saturation,
+- disappearance of the finite-size barrier above `S_crit`,
+- positive reversible-work barrier below critical,
+- positive vapor and latent-heat transport resistances,
+- controlled ambient-driver behavior,
+- an end-to-end supersaturation-ramp trajectory that crosses both `S_crit` and `D_crit` and grows into the micron regime.
 
 ## Scientific references
 
