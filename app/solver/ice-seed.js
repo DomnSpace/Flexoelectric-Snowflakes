@@ -1,39 +1,38 @@
-import { CONSTANTS } from './thermo.js';
 import { compositionFromWaterMass } from './composition.js';
-
-export const ICE_SEED_DEFAULTS = Object.freeze({
-  iceDensity: 917.0,                  // kg m^-3; temporary until IAPWS Ice-Ih EOS module
-  latentHeatFusionRef: 333550,        // J kg^-1 at ~0 C; explicit compact approximation
-  minSeedMassFraction: 1e-6,
-  maxInitialSeedMassFraction: 0.05,
-});
+import { postCriticalSeedFromCNT, phaseEnthalpyDifference } from './embryo.js';
 
 /**
- * Compact initial ice seed. This is NOT yet classical embryo thermodynamics:
- * gamma_il and critical-radius energetics belong to the next refinement.
- * It is the first resolved post-nucleation mass state after a stochastic event.
+ * Post-critical ice seed born from a stochastic nucleation event.
+ *
+ * Seed mass is now set by a source-tagged CNT reference embryo radius rather than
+ * an arbitrary fraction of droplet mass. The stochastic Koop hazard remains the
+ * event generator; CNT is used only to size/diagnose the first post-critical seed.
  */
 export function makeMassConservingIceSeed({
   waterMass,
   inventory,
   T,
+  pPa = 101325,
+  aw,
   pathway,
   t,
-  seedMassFraction = ICE_SEED_DEFAULTS.minSeedMassFraction,
-  options = {},
+  gammaIl,
+  radiusFactor = 1.05,
 }) {
-  const rhoIce = options.iceDensity ?? ICE_SEED_DEFAULTS.iceDensity;
-  const Lf = options.latentHeatFusion ?? ICE_SEED_DEFAULTS.latentHeatFusionRef;
-  const frac = Math.max(
-    ICE_SEED_DEFAULTS.minSeedMassFraction,
-    Math.min(options.maxInitialSeedMassFraction ?? ICE_SEED_DEFAULTS.maxInitialSeedMassFraction, seedMassFraction)
-  );
   const initialWaterMass = Math.max(0, waterMass);
-  const iceMass = Math.min(initialWaterMass, initialWaterMass * frac);
+  const embryo = postCriticalSeedFromCNT({
+    T,
+    pPa,
+    aw,
+    totalWaterMass: initialWaterMass,
+    gammaIl,
+    radiusFactor,
+  });
+  const iceMass = embryo.iceMass;
   const liquidWaterMass = initialWaterMass - iceMass;
-  const iceVolume = iceMass / rhoIce;
-  const equivalentDiameter = iceVolume > 0 ? Math.cbrt(6 * iceVolume / Math.PI) : 0;
-  const latentHeatReleased = iceMass * Lf;
+  const thermo = phaseEnthalpyDifference({ T, pPa });
+  const latentHeatFusion = Math.max(0, thermo.latentHeat);
+  const latentHeatReleased = iceMass * latentHeatFusion;
   const liquidComposition = compositionFromWaterMass(liquidWaterMass, inventory);
 
   return {
@@ -44,28 +43,30 @@ export function makeMassConservingIceSeed({
     iceMass,
     liquidWaterMass,
     iceMassFraction: initialWaterMass > 0 ? iceMass / initialWaterMass : 0,
-    iceVolume,
-    equivalentDiameter,
-    rhoIce,
-    latentHeatFusion: Lf,
+    iceVolume: embryo.volume,
+    equivalentDiameter: embryo.volume > 0 ? Math.cbrt(6 * embryo.volume / Math.PI) : 0,
+    seedRadius: embryo.radius,
+    rhoIce: embryo.cnt.ice.rho,
+    latentHeatFusion,
     latentHeatReleased,
     liquidComposition,
     massResidual: initialWaterMass - (iceMass + liquidWaterMass),
-    status: 'compact_ice_seed',
-    scientificBoundary: 'Seed mass conversion is exact; ice density and latent heat are compact approximations; gamma_il/critical embryo geometry not yet loaded.',
+    cnt: embryo.cnt,
+    embryo,
+    phaseThermo: thermo,
+    status: 'postcritical_cnt_seed',
+    scientificBoundary: 'Koop hazard triggers the event; CNT reference sizes the first post-critical seed. gamma_il remains an explicit source-tagged parameter.',
   };
 }
 
-/** Advance frozen mass while conserving total H2O mass. */
-export function advanceIceFraction(seed, targetIceFraction, inventory, options = {}) {
+/** Advance frozen mass while conserving total H2O mass. Post-seed growth law is still deferred. */
+export function advanceIceFraction(seed, targetIceFraction, inventory) {
   const frac = Math.max(seed.iceMassFraction, Math.min(1, targetIceFraction));
   const total = seed.totalWaterMass;
   const iceMass = total * frac;
   const liquidWaterMass = total - iceMass;
   const deltaIceMass = iceMass - seed.iceMass;
-  const Lf = options.latentHeatFusion ?? seed.latentHeatFusion;
-  const rhoIce = options.iceDensity ?? seed.rhoIce;
-  const iceVolume = iceMass / rhoIce;
+  const iceVolume = iceMass / seed.rhoIce;
   return {
     ...seed,
     iceMass,
@@ -73,30 +74,20 @@ export function advanceIceFraction(seed, targetIceFraction, inventory, options =
     iceMassFraction: frac,
     iceVolume,
     equivalentDiameter: Math.cbrt(6 * iceVolume / Math.PI),
-    latentHeatReleased: seed.latentHeatReleased + Math.max(0, deltaIceMass) * Lf,
+    latentHeatReleased: seed.latentHeatReleased + Math.max(0, deltaIceMass) * seed.latentHeatFusion,
     liquidComposition: compositionFromWaterMass(liquidWaterMass, inventory),
     massResidual: total - (iceMass + liquidWaterMass),
   };
 }
 
-/** Sensible warming estimate if latent heat is initially trapped in the remaining droplet. */
+/** Adiabatic upper-bound temperature jump if the released heat stayed in the remaining liquid. */
 export function latentHeatTemperatureJump(seed, liquidCp, liquidMass = seed.liquidWaterMass) {
   const heatCapacity = Math.max(1e-30, liquidMass * liquidCp);
   return seed.latentHeatReleased / heatCapacity;
 }
 
-/** Useful for an eventual interface seed: six equivalent facet normals, but no arm growth yet. */
 export function makeHexagonalSeedFrame(radius = 1) {
-  const normals = [];
-  for (let i = 0; i < 6; i++) {
-    const theta = i * Math.PI / 3;
-    normals.push({ theta, x: Math.cos(theta), y: Math.sin(theta), z: 0 });
-  }
-  return {
-    radius,
-    symmetry: 6,
-    prismNormals: normals,
-    basalNormals: [{x:0,y:0,z:1},{x:0,y:0,z:-1}],
-    status: 'orientation_frame_only',
-  };
+  const normals=[];
+  for(let i=0;i<6;i++){const theta=i*Math.PI/3;normals.push({theta,x:Math.cos(theta),y:Math.sin(theta),z:0});}
+  return {radius,symmetry:6,prismNormals:normals,basalNormals:[{x:0,y:0,z:1},{x:0,y:0,z:-1}],status:'orientation_frame_only'};
 }
