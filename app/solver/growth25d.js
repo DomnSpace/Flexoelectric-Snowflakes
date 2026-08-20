@@ -114,24 +114,28 @@ export function resolvedGrowthStep(state,dt,{vaporIterations=45,heatIterations=5
   relaxHeatField(state,heatIterations);relaxVaporField(state,vaporIterations);
   const iceProps=iceIhProperties(Tinf,Math.min(pressurePa,210e6)),rhoIce=iceProps.rho;
   const Dv=diffusivityWaterVaporAir(Tinf,pressurePa),cSat=saturationMassDensityIce(Tinf),vkin=iceKineticVelocity(Tinf,rhoIce),Ls=sublimationEnthalpy(Tinf,pressurePa).Ls;
+  const beta=Ls/(CONSTANTS.RV*Tinf*Tinf);
   const nextHeat=new Float64Array(heatSource.length),adds=[];
   let totalMassRate=0,alphaSum=0,sigSum=0,count=0;
   for(let j=1;j<N-1;j++)for(let i=1;i<N-1;i++)if(isInterfaceGas(state,i,j)){
     const k=id(i,j,N),localSigma=sigma[k];
-    const alpha=localPrismAlpha(state,i,j,localSigma);
+    let faces=0,sigmaEqSum=0;
+    for(const[di,dj]of dirs){const kk=id(i+di,j+dj,N);if(ice[kk]){faces++;sigmaEqSum+=beta*state.dT[kk];}}
+    const sigmaEq=faces?sigmaEqSum/faces:0;
+    const sigmaDrive=Math.max(0,localSigma-sigmaEq);
+    const alpha=localPrismAlpha(state,i,j,sigmaDrive);
     const Rdiff=dx/(Math.max(1e-30,Dv*cSat)),Rkin=1/(Math.max(1e-30,rhoIce*alpha*vkin));
-    let faces=0;for(const[di,dj]of dirs)if(ice[id(i+di,j+dj,N)])faces++;
-    const massFlux=Math.max(0,localSigma)/(Rdiff+Rkin); // kg m^-2 s^-1
+    const massFlux=sigmaDrive/(Rdiff+Rkin); // kg m^-2 s^-1
     const interfaceArea=faces*dx*(2*state.basalHalfThickness);
     const massRate=massFlux*interfaceArea;
     const cellCapacity=rhoIce*dx*dx*(2*state.basalHalfThickness);
     const dphi=massRate*dt/Math.max(1e-30,cellCapacity);
     adds.push([k,dphi,massRate]);
     nextHeat[k]+=massRate*Ls/Math.max(1e-30,dx*dx*(2*state.basalHalfThickness));
-    totalMassRate+=massRate;alphaSum+=alpha;sigSum+=localSigma;count++;
+    totalMassRate+=massRate;alphaSum+=alpha;sigSum+=sigmaDrive;count++;
   }
   let deposited=0;
-  for(const[k,dphi,massRate]of adds){const before=phi[k];phi[k]=Math.min(1,phi[k]+dphi);if(phi[k]>=0.999)ice[k]=1;deposited+=(phi[k]-before)*rhoIce*dx*dx*(2*state.basalHalfThickness);}
+  for(const[k,dphi]of adds){const before=phi[k];phi[k]=Math.min(1,phi[k]+dphi);if(phi[k]>=0.999)ice[k]=1;deposited+=(phi[k]-before)*rhoIce*dx*dx*(2*state.basalHalfThickness);}
   heatSource.set(nextHeat);
 
   const meanSigma=count?sigSum/count:0;
