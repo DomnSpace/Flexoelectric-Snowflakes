@@ -10,6 +10,7 @@ const tests = [
   './nucleation.test.mjs',
   './postseed.test.mjs',
   './growth25d.test.mjs',
+  './fieldlines.test.mjs',
 ];
 
 for (const test of tests) {
