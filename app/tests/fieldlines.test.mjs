@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import { makeGrowth25DState, resolvedGrowthStep } from '../solver/growth25d.js';
+import { seedStreamlines, vaporMassFluxVector, heatFluxVector, growthPotentialVector, fieldResidualDiagnostics } from '../solver/fieldlines.js';
+
+const s=makeGrowth25DState({N:51,dx:0.8e-6,seedRadius:2.4e-6,Tinf:258.15,sigmaInf:0.05});
+for(let n=0;n<6;n++)resolvedGrowthStep(s,0.02,{vaporIterations:50,heatIterations:60});
+const c=(s.N-1)/2;
+const v=vaporMassFluxVector(s,c+8,c);
+const q=heatFluxVector(s,c+4,c);
+const chi=growthPotentialVector(s,c+8,c);
+assert.ok(Number.isFinite(v.magnitude)&&v.magnitude>=0);
+assert.ok(Number.isFinite(q.magnitude)&&q.magnitude>=0);
+assert.ok(Number.isFinite(chi.magnitude)&&chi.magnitude>=0);
+const lines=seedStreamlines(s,{field:'chi',count:12});
+assert.equal(lines.length,12);
+assert.ok(lines.some(l=>l.points.length>2));
+const d=fieldResidualDiagnostics(s);
+assert.ok(Number.isFinite(d.vaporDivergenceRms));
+assert.ok(Number.isFinite(d.heatDivergenceRms));
+assert.ok(Number.isFinite(d.growthPotentialCurlRms));
+assert.ok(d.growthPotentialCurlRms>=0);
+console.log('fieldlines.test.mjs PASS');
