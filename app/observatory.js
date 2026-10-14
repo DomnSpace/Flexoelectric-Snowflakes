@@ -464,7 +464,7 @@ function setupEvents(){
     if(event.key.toLowerCase()==='s'){event.preventDefault();$('step').click();}
     if(event.key.toLowerCase()==='r'){event.preventDefault();reset(false);}
   });
-  new ResizeObserver(()=>{if(current())drawAllGraphs(current());}).observe($('.graphs'));
+  new ResizeObserver(()=>{if(current())drawAllGraphs(current());}).observe(document.querySelector('.graphs'));
 }
 
 function loop(now){
