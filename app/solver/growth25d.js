@@ -5,6 +5,7 @@ import {
   thermalConductivityAir,
 } from './thermo.js';
 import { iceIhProperties } from './ice-ih-eos.js';
+import { initializeElectrostatics, solveElectrostatics, dielectricEquilibriumLogShift } from './electric25d.js';
 import { attachmentCoefficient, iceKineticVelocity, saturationMassDensityIce, sublimationEnthalpy } from './postseed.js';
 
 /**
@@ -53,6 +54,7 @@ export function makeGrowth25DState({
   pressurePa=101325,
   basalHalfThickness=1.5e-6,
   kinetics=DEFAULT_ICE_KINETICS,
+  electric=null,
 }={}){
   if(N%2===0)N+=1;
   const n=N*N,ice=new Uint8Array(n),phi=new Float64Array(n),sigma=new Float64Array(n),dT=new Float64Array(n),heatSource=new Float64Array(n);
@@ -62,8 +64,10 @@ export function makeGrowth25DState({
     const x=(i-c)*dx,y=(j-c)*dx,r=Math.hypot(x,y),k=id(i,j,N);
     if(r<=seedRadius){ice[k]=1;phi[k]=1;sigma[k]=0;}
   }
-  return {N,dx,Tinf,sigmaInf,pressurePa,ice,phi,sigma,dT,heatSource,basalHalfThickness,
-    kinetics:JSON.parse(JSON.stringify(kinetics)),t:0,totalDepositedMass:0,totalLatentHeat:0,lastBudget:null};
+  const state={N,dx,Tinf,sigmaInf,pressurePa,ice,phi,sigma,dT,heatSource,basalHalfThickness,
+    kinetics:JSON.parse(JSON.stringify(kinetics)),t:0,totalDepositedMass:0,totalLatentHeat:0,lastBudget:null,electric:null};
+  if(electric?.enabled) initializeElectrostatics(state,electric);
+  return state;
 }
 
 function occ(state,i,j){
@@ -188,14 +192,21 @@ export function resolvedGrowthStep(state,dt,{vaporIterations=45,heatIterations=5
   const Dv=diffusivityWaterVaporAir(Tinf,pressurePa),cRef=saturationMassDensityIce(Tinf),vkin=iceKineticVelocity(Tinf,rhoIce),Ls=sublimationEnthalpy(Tinf,pressurePa).Ls;
   const nextHeat=new Float64Array(heatSource.length),adds=[];
   let totalMassRate=0,alphaSum=0,sigSum=0,count=0,curvatureSum=0,capillarySum=0;
+  let electricShiftSum=0, maxElectricShift=0;
   for(let j=1;j<N-1;j++)for(let i=1;i<N-1;i++)if(isInterfaceGas(state,i,j)){
     const k=id(i,j,N),cGas=cRef*Math.max(1e-9,1+sigma[k]);
     const eq=localInterfaceEquilibrium(state,i,j,iceProps);
-    const sigmaDrive=Math.max(0,cGas/eq.cEq-1);
+    const electricShift=dielectricEquilibriumLogShift(state,k, rhoIce);
+    // Electrostatic correction changes interfacial equilibrium, not a
+    // decorative velocity or alpha multiplier. Zero shift is exact baseline.
+    const cEq=eq.cEq*Math.exp(electricShift);
+    const sigmaDrive=Math.max(0,cGas/cEq-1);
+    electricShiftSum+=electricShift;
+    maxElectricShift=Math.max(maxElectricShift,Math.abs(electricShift));
     const alpha=prismAttachmentAt(state,i,j,sigmaDrive);
     const Rdiff=dx/Math.max(1e-30,Dv);
-    const Rkin=eq.cEq/Math.max(1e-30,rhoIce*alpha*vkin);
-    const massFlux=Math.max(0,cGas-eq.cEq)/(Rdiff+Rkin);
+    const Rkin=cEq/Math.max(1e-30,rhoIce*alpha*vkin);
+    const massFlux=Math.max(0,cGas-cEq)/(Rdiff+Rkin);
     const interfaceArea=eq.interfaceLength*(2*state.basalHalfThickness);
     const massRate=massFlux*interfaceArea;
     const cellCapacity=rhoIce*dx*dx*(2*state.basalHalfThickness);
@@ -210,6 +221,9 @@ export function resolvedGrowthStep(state,dt,{vaporIterations=45,heatIterations=5
     deposited+=(phi[k]-before)*rhoIce*dx*dx*(2*state.basalHalfThickness);
   }
   heatSource.set(nextHeat);
+  // Refresh dielectric/P fields after the evolving phase fraction is updated.
+  // The value used for this step's deposition was the previous converged field.
+  if(state.electric?.params.enabled)solveElectrostatics(state,65);
 
   const meanSigma=count?sigSum/count:0;
   const alphaBasal=attachmentCoefficient(Math.max(0,meanSigma),state.kinetics.basal);
@@ -221,6 +235,10 @@ export function resolvedGrowthStep(state,dt,{vaporIterations=45,heatIterations=5
     totalMassRate,deposited,Ls,rhoIce,Dv,cRef,vkin,meanSigma,
     meanPrismAlpha:count?alphaSum/count:0,alphaBasal,vBasal,interfaceCells:count,maxDeltaT,
     meanCurvature:count?curvatureSum/count:0,meanCapillaryExponent:count?capillarySum/count:0,
+    meanElectricLogShift:count?electricShiftSum/count:0,maxElectricLogShift:maxElectricShift,
+    maxElectricFieldVM:state.electric?.diagnostics.maxFieldVM??0,
+    maxFlexoPolarizationCm2:state.electric?.diagnostics.maxPolarization??0,
+    electricResidualRmsV:state.electric?.diagnostics.residualRmsV??0,
     stencil:'9-point-isotropic',orientation:'phase-gradient',
   };
   return state;
