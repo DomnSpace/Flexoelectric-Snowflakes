@@ -32,6 +32,22 @@ try{
   assert.equal(await page.locator('#pending').isVisible(),true,'parameter changes must be pending');
   await page.locator('#apply').click();
   assert.equal(await page.locator('#pending').isVisible(),false,'apply resets model');
+  // Exercise the optional electrostatic experiment with a physically
+  // computed potential, rather than trusting only the new DOM controls.
+  await page.locator('#electricEnabled').check();
+  await page.locator('#electricCouple').check();
+  await page.locator('#eField').evaluate(el=>{el.value='10';el.dispatchEvent(new Event('input',{bubbles:true}));});
+  await page.locator('#bendGradient').evaluate(el=>{el.value='1500';el.dispatchEvent(new Event('input',{bubbles:true}));});
+  await page.locator('#apply').click();
+  assert.match(await page.locator('#electricReadout').innerText(),/POISSON \+ DIELECTRIC/);
+  await page.locator('#field').selectOption('electric');
+  assert.match(await page.locator('#fieldMax').innerText(),/MV\/m/);
+  await page.locator('#step').click();
+  const maxE=parseFloat(await page.locator('#bEField').innerText());
+  assert.ok(maxE>0,'physical electric field must be nonzero');
+  assert.equal(await page.locator('#errorOverlay').isVisible(),false,'electric solver must not throw');
+  await page.locator('#field').selectOption('potential');
+  assert.match(await page.locator('#fieldMin').innerText(),/ V/);
   await page.locator('#field').selectOption('temperature');
   await page.locator('#scrub').evaluate(el=>{el.value='0';el.dispatchEvent(new Event('input',{bubbles:true}));});
   const pngValid=await page.locator('#viewport canvas').evaluate(el=>el.toDataURL('image/png').startsWith('data:image/png;base64,'));
