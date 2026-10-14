@@ -1,0 +1,22 @@
+name: Snowflake Observatory CI
+on:
+  push:
+    branches: [feat/snowflake-observatory-v2]
+  pull_request:
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Parse UI module
+        run: node --check app/observatory.js
+      - name: Check viewer DOM / solver wiring
+        run: node app/tests/observatory-contract.test.mjs
+      - name: Run physics regression suite
+        run: node app/tests/run-all.mjs
