@@ -33,7 +33,7 @@ try{
   await page.locator('#apply').click();
   assert.equal(await page.locator('#pending').isVisible(),false,'apply resets model');
   await page.locator('#field').selectOption('temperature');
-  await page.locator('#scrub').fill('0');
+  await page.locator('#scrub').evaluate(el=>{el.value='0';el.dispatchEvent(new Event('input',{bubbles:true}));});
   const pngValid=await page.locator('#viewport canvas').evaluate(el=>el.toDataURL('image/png').startsWith('data:image/png;base64,'));
   assert.ok(pngValid,'WebGL canvas PNG export works');
   const downloadPromise=page.waitForEvent('download');
