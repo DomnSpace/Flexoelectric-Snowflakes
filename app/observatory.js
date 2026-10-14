@@ -22,14 +22,20 @@ const pg = x => x * 1e12;
 const STEPTIME = 0.5;
 const BASE_STEPS_PER_SECOND = 3;
 const MAX_SNAPSHOTS = 360;
-const ids = ['temp','sigma','pressure','anisotropy','prism','seed','sdak','capillarity'];
+const ids = ['temp','sigma','pressure','anisotropy','prism','seed','sdak','capillarity','electricEnabled','electricCouple','eField','eAngle','epsIce','bendGradient','bendAngle','muFlexo'];
 const labels = [
   ['temp','tempValue',v => num(v,0)+' °C'],
   ['sigma','sigmaValue',v => num(v,1)+' %'],
   ['pressure','pressureValue',v => num(v,0)+' kPa'],
   ['anisotropy','anisotropyValue',v => num(v,2)],
   ['prism','prismValue',v => num(v,4)],
-  ['seed','seedValue',v => num(v,2)+' µm']
+  ['seed','seedValue',v => num(v,2)+' µm'],
+  ['eField','eFieldValue',v => num(v,2)+' MV/m'],
+  ['eAngle','eAngleValue',v => num(v,0)+'°'],
+  ['epsIce','epsIceValue',v => num(v,1)],
+  ['bendGradient','bendGradientValue',v => num(v,0)+' m⁻¹'],
+  ['bendAngle','bendAngleValue',v => num(v,0)+'°'],
+  ['muFlexo','muFlexoValue',v => num(v,2)+' nC/m']
 ];
 const palette = ['#8de0ff','#b7a9ff','#f9cb8b','#72d8b7','#ff9da5','#e8efff'];
 let state, frames=[], selectedIndex=0, replay=false, playing=true, pending=false;
@@ -49,6 +55,14 @@ function config() {
       anisotropy6: v('anisotropy'), sdak:$('sdak').checked,
       sdakStrength:0.55, capillarity:$('capillarity').checked,
       gammaIv:DEFAULT_ICE_KINETICS.gammaIv
+    },
+    electric:{
+      enabled:$('electricEnabled').checked,
+      fieldVM:v('eField')*1e6,angleDeg:v('eAngle'),
+      epsilonIce:v('epsIce'),epsilonAir:1.0006,
+      prescribedGradient:v('bendGradient'),gradientAngleDeg:v('bendAngle'),
+      flexoCoefficient:v('muFlexo')*1e-9,
+      coupleGrowth:$('electricCouple').checked
     }
   };
 }
@@ -68,6 +82,11 @@ function snap() {
     t:state.t, n:state.N, dx:state.dx, Tinf:state.Tinf,
     u:new Float32Array(state.sigma), dT:new Float32Array(state.dT),
     phi:new Float32Array(state.phi), ice:new Uint8Array(state.ice),
+    ePotential:state.electric?new Float32Array(state.electric.potential):null,
+    eMagnitude:state.electric?new Float32Array(state.electric.magnitude):null,
+    eDiagnostics:state.electric?{...state.electric.diagnostics}:null,
+    eEnabled:!!state.electric?.params.enabled,
+    eCoupled:!!state.electric?.params.coupleGrowth,
     morph:{
       radius:m.radius, meanRadius:m.meanRadius, equivalentBasalRadius:m.equivalentBasalRadius,
       halfThickness:m.halfThickness, aspectRatio:m.aspectRatio,
@@ -93,6 +112,7 @@ function reset(start=true) {
     setPending(false);
     capture();sync();setStatus(start?'SOLVER RUNNING':'SOLVER PAUSED');
     $('scenario').textContent='ICE · '+num(Number($('temp').value),0)+' °C / '+num(Number($('sigma').value),1)+' %';
+    $('electricReadout').textContent=state.electric?(state.electric.params.coupleGrowth?'POISSON + DIELECTRIC GROWTH':'POISSON / DIAGNOSTIC ONLY'):'DISABLED';
     $('play').textContent=start?'❚❚ Pause':'▶ Play';
     $('live').classList.add('active');
   } catch(e) { fail(e); }
@@ -152,7 +172,11 @@ function updateBudget(s) {
     bCells:b?String(b.interfaceCells):'—',
     bCurve:b?num(b.meanCurvature*1e-6,4)+' µm⁻¹':'—',
     bCap:b?num(b.meanCapillaryExponent,6):'—',
-    bFlux:b?num(pg(b.totalMassRate),5)+' pg/s':'—'
+    bFlux:b?num(pg(b.totalMassRate),5)+' pg/s':'—',
+    bEField:s.eEnabled?num((s.eDiagnostics?.maxFieldVM||0)*1e-6,4)+' MV/m':'OFF',
+    bPolar:s.eEnabled?num((s.eDiagnostics?.maxPolarization||0)*1e6,4)+' µC/m²':'OFF',
+    bElectricShift:b?num((b.meanElectricLogShift||0)*1e6,5)+' ppm':'—',
+    bEResidual:s.eEnabled?num(s.eDiagnostics?.residualRmsV||0,7)+' V':'OFF'
   };
   for(const [id,value] of Object.entries(fields)) $(id).textContent=value;
 }
@@ -276,6 +300,8 @@ function fieldColor(t,ice=false) {
 function fieldValues(s,kind) {
   if(kind==='temperature')return {values:s.dT,unit:'mK',scale:1000};
   if(kind==='occupancy')return {values:s.phi,unit:'φ',scale:1};
+  if(kind==='potential')return {values:s.ePotential||new Float32Array(s.n*s.n),unit:'V',scale:1};
+  if(kind==='electric')return {values:s.eMagnitude||new Float32Array(s.n*s.n),unit:'MV/m',scale:1e-6};
   return {values:s.u,unit:'%',scale:100};
 }
 function drawField(s) {
@@ -284,7 +310,8 @@ function drawField(s) {
   const N=s.n,{values,scale,unit}=fieldValues(s,kind);
   const data=[];
   for(let k=0;k<N*N;k++){
-    if(kind==='occupancy')data.push(s.ice[k]?1:values[k]);else if(!s.ice[k])data.push(values[k]);
+    if(['occupancy','electric','potential'].includes(kind))data.push(kind==='occupancy'&&s.ice[k]?1:values[k]);
+    else if(!s.ice[k])data.push(values[k]);
   }
   let lo=kind==='occupancy'?0:Math.min(...data),hi=kind==='occupancy'?1:Math.max(...data);
   if(!Number.isFinite(lo)||!Number.isFinite(hi)){lo=0;hi=1;}
@@ -293,12 +320,13 @@ function drawField(s) {
   const image=ctx.createImageData(N,N);
   for(let k=0;k<N*N;k++){
     const fraction=kind==='occupancy'?(s.ice[k]?1:values[k]):values[k];
-    const rgb=fieldColor((fraction-lo)/den,kind!=='occupancy'&&s.ice[k]);
+    const rgb=fieldColor((fraction-lo)/den,['vapor','temperature'].includes(kind)&&s.ice[k]);
     const o=k*4;image.data[o]=rgb[0];image.data[o+1]=rgb[1];image.data[o+2]=rgb[2];image.data[o+3]=255;
   }
   ctx.putImageData(image,0,0);
-  $('fieldMin').textContent=num(lo*scale,kind==='temperature'?2:1)+' '+unit;
-  $('fieldMax').textContent=num(hi*scale,kind==='temperature'?2:1)+' '+unit;
+  const decimal=['electric','temperature'].includes(kind)?3:2;
+  $('fieldMin').textContent=num(lo*scale,decimal)+' '+unit;
+  $('fieldMax').textContent=num(hi*scale,decimal)+' '+unit;
 }
 function onFieldMove(evt) {
   const s=current();if(!s)return;
@@ -307,7 +335,8 @@ function onFieldMove(evt) {
   const j=clamp(Math.floor((evt.clientY-r.top)/r.height*N),0,N-1);
   const k=j*N+i;
   const c=(N-1)/2;
-  $('fieldInspect').textContent='x '+num((i-c)*um(s.dx),1)+' µm · y '+num((j-c)*um(s.dx),1)+' µm · u '+num(s.u[k]*100,3)+' % · ΔT '+num(s.dT[k]*1000,2)+' mK · φ '+num(s.ice[k]?1:s.phi[k],2);
+  $('fieldInspect').textContent='x '+num((i-c)*um(s.dx),1)+' µm · y '+num((j-c)*um(s.dx),1)+' µm · u '+num(s.u[k]*100,3)+' % · ΔT '+num(s.dT[k]*1000,2)+' mK · φ '+num(s.ice[k]?1:s.phi[k],2)+
+  (s.eEnabled?' · |E| '+num(s.eMagnitude[k]*1e-6,3)+' MV/m · V '+num(s.ePotential[k],3)+' V':'');
 }
 
 // Canvas plots are pixel-perfect and use the same stored physical samples.
@@ -399,14 +428,17 @@ function download(name,type,data) {
   setTimeout(()=>URL.revokeObjectURL(url),2000);
 }
 function downloadCsv(){
-  const columns=['time_s','radius_um','mean_radius_um','half_thickness_um','deposited_mass_pg','latent_energy_J','max_dT_mK','m4_relative','m6_relative','m12_relative','mean_interface_sigma','mean_prism_alpha','alpha_basal','interface_cells','mass_rate_pg_s','basal_velocity_um_s','mean_curvature_per_um','mean_capillary_exponent'];
+  const columns=['time_s','radius_um','mean_radius_um','half_thickness_um','deposited_mass_pg','latent_energy_J','max_dT_mK','m4_relative','m6_relative','m12_relative','mean_interface_sigma','mean_prism_alpha','alpha_basal','interface_cells','mass_rate_pg_s','basal_velocity_um_s','mean_curvature_per_um','mean_capillary_exponent',
+    'max_electric_field_MV_m','flexoelectric_P_uC_m2','mean_dielectric_log_shift','poisson_residual_V','electric_coupled'];
   const rows=[columns.join(',')];
   for(const s of frames){
     const b=s.budget||{},m=s.morph;
     const values=[s.t,um(m.equivalentBasalRadius),um(m.meanRadius),um(m.halfThickness),pg(s.deposited),s.energy,(b.maxDeltaT||0)*1000,
       m.modes[4].relative,m.modes[6].relative,m.modes[12].relative,b.meanSigma,b.meanPrismAlpha,b.alphaBasal,b.interfaceCells,
       b.totalMassRate===undefined?'':pg(b.totalMassRate),b.vBasal===undefined?'':um(b.vBasal),
-      b.meanCurvature===undefined?'':b.meanCurvature*1e-6,b.meanCapillaryExponent];
+      b.meanCurvature===undefined?'':b.meanCurvature*1e-6,b.meanCapillaryExponent,
+      s.eDiagnostics?s.eDiagnostics.maxFieldVM*1e-6:'',s.eDiagnostics?s.eDiagnostics.maxPolarization*1e6:'',
+      b.meanElectricLogShift??0,s.eDiagnostics?.residualRmsV??'',s.eCoupled?1:0];
     rows.push(values.map(v=>v??'').join(','));
   }
   download('snowflake-observatory-'+new Date().toISOString().slice(0,10)+'.csv','text/csv;charset=utf-8',rows.join('\r\n')+'\r\n');
@@ -430,7 +462,9 @@ function showReplay(index){
 function setupEvents(){
   formatControls();
   for(const [id] of labels)$(id).addEventListener('input',()=>{formatControls();setPending(true);});
-  for(const id of ['sdak','capillarity'])$(id).addEventListener('change',()=>setPending(true));
+  for(const id of ['sdak','capillarity','electricEnabled','electricCouple','epsIce'])$(id).addEventListener('change',()=>{
+    formatControls();setPending(true);
+  });
   $('apply').addEventListener('click',()=>reset(true));
   $('reset').addEventListener('click',()=>reset(false));
   $('step').addEventListener('click',()=>{
