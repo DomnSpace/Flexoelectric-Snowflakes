@@ -41,6 +41,11 @@ jobs:
         run: |
           node app/tests/observatory-contract.test.mjs
           node app/tests/run-all.mjs
+      - name: Inspect current GitHub Pages publishing configuration
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/pages" --jq '{html_url, status, build_type, source, https_enforced}' || echo "Pages API unavailable to this workflow token"
       - name: Assemble static Pages site
         run: |
           mkdir -p _site/app
