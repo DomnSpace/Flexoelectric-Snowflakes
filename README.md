@@ -46,12 +46,21 @@ The source-level contract test verifies expected DOM bindings, real solver impor
 
 ## GitHub Pages — browser-only launch
 
-The Observatory can run as a static website: all numerical physics and Three.js rendering execute in the client browser. A GitHub Actions deploy workflow lives in `.github/workflows/pages.yml`; it builds and tests the site from `feat/snowflake-electrostatics-v1` and publishes it with the GitHub Pages artifact workflow.
+GitHub Pages is already enabled for this public repository. Its current setting was verified through the Pages API on 2026-10-14:
 
-**One-time repository setting:** go to [Settings → Pages](https://github.com/DomnSpace/Flexoelectric-Snowflakes/settings/pages), select **GitHub Actions** under **Build and deployment → Source**. Without this setting, the build can succeed but the Pages deployment will fail at configure-pages. The regular `GITHUB_TOKEN` cannot create/enable a disabled Pages site automatically.
+- **Publishing mode:** Deploy from a branch (legacy).
+- **Current published branch:** `feat/flexoelectric-snowflake` at `/(root)` (the earlier viewer).
+- **Confirmed Pages address:** https://domnspace.github.io/Flexoelectric-Snowflakes/
 
-Once a [Pages workflow run](https://github.com/DomnSpace/Flexoelectric-Snowflakes/actions/workflows/pages.yml) reports deployment success, open **https://domnspace.github.io/Flexoelectric-Snowflakes/**. This is the expected default hostname, not proof of publication until the workflow confirms it.
+To publish the complete current Observatory with electrostatics, change one repository setting:
 
-The deploy artifact contains `index.html`, the `app/` module tree, and the documentation. All asset imports and laboratory navigation links are relative to the repository root, allowing Pages to serve it from `/Flexoelectric-Snowflakes/`. WebGL is required; Three.js 0.160.1 is loaded from jsDelivr over HTTPS. Results export directly from the client without server-side storage.
+1. Open [Repository Settings → Pages](https://github.com/DomnSpace/Flexoelectric-Snowflakes/settings/pages).
+2. Keep **Build and deployment → Source: Deploy from a branch**.
+3. Set **Branch: `feat/snowflake-electrostatics-v1`**, **Folder: `/(root)`**, then click **Save**.
 
-For local development, continue to use `run-viewer.cmd` or `python -m http.server 8088`. GitHub Pages serves the same source.
+GitHub Pages will publish directly from that feature branch, and future commits pushed there will trigger Pages rebuilds. The app needs no build tooling: root `index.html` imports its local solver modules and Three.js from jsDelivr. All navigation and imports use relative paths compatible with `/Flexoelectric-Snowflakes/`. There is no backend or data storage; computations run in the visitor's browser.
+
+**Why this setting is necessary:** the repository's existing Pages site is configured for branch publishing, and the Github connector does not expose a Pages-settings edit. An attempted custom Actions deployment packaged and passed all 13 physics tests but could not replace the current branch-based publishing configuration. We removed the redundant Actions publishing workflow rather than leaving broken CI or silently overriding the existing site.
+
+For local development, `run-viewer.cmd` or `python -m http.server 8088` remains available. GitHub Pages serves the same source.
+
