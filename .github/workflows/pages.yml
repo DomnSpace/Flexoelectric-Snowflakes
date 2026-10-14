@@ -1,0 +1,74 @@
+name: Publish Snowflake Observatory to GitHub Pages
+
+on:
+  push:
+    branches:
+      - feat/snowflake-electrostatics-v1
+    paths:
+      - index.html
+      - favicon.svg
+      - app/**
+      - ELECTROSTATICS.md
+      - FIELD_SYSTEM.md
+      - README.md
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: snowflake-github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify JavaScript modules
+        run: |
+          node --check app/observatory.js
+          node --check app/solver/electric25d.js
+      - name: Verify physics and UI contracts before publishing
+        run: |
+          node app/tests/observatory-contract.test.mjs
+          node app/tests/run-all.mjs
+      - name: Assemble static Pages site
+        run: |
+          mkdir -p _site/app
+          cp index.html favicon.svg README.md ELECTROSTATICS.md FIELD_SYSTEM.md _site/
+          cp -R app/. _site/app/
+          touch _site/.nojekyll
+          test -f _site/index.html
+          test -f _site/app/observatory.js
+          test -f _site/app/solver/growth25d.js
+          test -f _site/app/solver/electric25d.js
+          test -f _site/app/observatory.css
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      # Pages must first be enabled at Settings > Pages > Source = GitHub Actions.
+      # The default GITHUB_TOKEN cannot bootstrap a disabled Pages site.
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Deploy Pages site
+        id: deployment
+        uses: actions/deploy-pages@v4
