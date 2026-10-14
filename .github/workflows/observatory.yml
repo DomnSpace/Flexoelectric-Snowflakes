@@ -16,6 +16,8 @@ jobs:
           node-version: '22'
       - name: Parse UI module
         run: node --check app/observatory.js
+      - name: Parse electrostatic extension
+        run: node --check app/solver/electric25d.js
       - name: Check viewer DOM / solver wiring
         run: node app/tests/observatory-contract.test.mjs
       - name: Run physics regression suite
