@@ -8,8 +8,8 @@ const zero=makeGrowth25DState({N:31,dx:.75e-6,sigmaInf:.08,seedRadius:1.5e-6,
   electric:{enabled:true,fieldVM:0,prescribedGradient:0,coupleGrowth:true}});
 assert.ok(zero.electric?.params.enabled,'electric state instantiated');
 for(let k=0;k<zero.electric.potential.length;k++){
-  assert.equal(zero.electric.potential[k],0,'no imposed potential');
-  assert.equal(zero.electric.magnitude[k],0,'no field without source');
+  assert.ok(zero.electric.potential[k]===0,'no imposed potential');
+  assert.ok(zero.electric.magnitude[k]===0,'no field without source');
 }
 for(let t=0;t<4;t++){
   resolvedGrowthStep(baseline,.5,{vaporIterations:15,heatIterations:15});
