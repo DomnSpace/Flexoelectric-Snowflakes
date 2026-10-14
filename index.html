@@ -1,566 +1,104 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Flexoelectric Snowflake — 3D Wiggle & Accretion</title>
-  <style>
-    :root {
-      --bg:#0c0f12; --fg:#e7eef7; --muted:#9fb3c8; --accent:#6ad3ff; --panel:#12171d;
-    }
-    html, body { height:100%; margin:0; background:var(--bg); color:var(--fg); font:14px/1.2 Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
-    #app { position:fixed; inset:0; display:grid; grid-template-columns: 1fr 360px; }
-    #scene { position:relative; }
-    #pane { position: absolute; top: 10px; right: 10px; }
-    .topbar { position:absolute; top:10px; left:10px; display:flex; gap:8px; z-index:10; }
-    .btn { background:#15202b; color:#d7e7ff; border:1px solid #1e2b38; border-radius:10px; padding:8px 12px; cursor:pointer; user-select:none; box-shadow:0 0 0 1px #0a1016 inset; }
-    .btn:hover { background:#192636; }
-    .hud { position:absolute; bottom:12px; left:12px; background:#0e141b99; border:1px solid #1a2530; border-radius:10px; padding:8px 12px; font-variant-numeric:tabular-nums; backdrop-filter: blur(6px); }
-    canvas { display:block; }
-    a { color: var(--accent); text-decoration: none; }
-    .logo { position:absolute; top:10px; right:10px; opacity:.6; font-size:12px; letter-spacing:.08em; }
-  </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#06111a">
+  <meta name="description" content="Snowflake Observatory: live 2.5-D ice-growth simulation, 3-D crystal reconstruction, physical field measurements and synchronized charts.">
+  <title>Snowflake Observatory | Flexoelectric Snowflakes</title>
+  <link rel="stylesheet" href="./app/observatory.css">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <script type="importmap">
+  {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/"}}
+  </script>
 </head>
 <body>
-<div id="app">
-  <div id="scene">
-    <div class="topbar">
-      <div class="btn" id="play">▶ Play</div>
-      <div class="btn" id="pause">⏸ Pause</div>
-      <div class="btn" id="step">⏭ Step</div>
-      <div class="btn" id="reset">⟲ Reset</div>
-      <div class="btn" id="randomize">🎲 Randomize</div>
-      <div class="btn" id="exportPNG">🖼 Export PNG</div>
-      <div class="btn" id="exportCSV">📈 Export CSV</div>
+<div class="shell">
+  <header class="mast">
+    <div class="brand"><span class="brand-icon" aria-hidden="true">❄</span><div><div class="eyebrow">DOMNSPACE / RESEARCH INSTRUMENT 002</div><h1>SNOWFLAKE <em>OBSERVATORY</em></h1></div></div>
+    <nav class="links" aria-label="Laboratories"><a href="./app/index.html">Activation</a><a href="./app/supercool.html">Supercooling</a><a href="./app/fields.html">Field lab</a><a href="./app/spatialfield.html">Spatial field</a><a target="_blank" rel="noopener noreferrer" href="https://github.com/DomnSpace/Flexoelectric-Snowflakes">Source ↗</a></nav>
+  </header>
+  <div class="metadata"><span class="live-dot"></span><span id="status">INITIALIZING PHYSICS</span><span class="meta-rule"></span><span>COUPLED VAPOR / THERMAL / KINETIC GROWTH</span><span class="meta-rule"></span><span id="stepLabel">STEP 0000</span><span class="grow"></span><span>2.5-D SOLVER · 3-D PRISM RECONSTRUCTION</span></div>
+  <section class="stats" aria-label="Live measurements">
+    <div class="stat"><span>ELAPSED MODEL TIME</span><strong id="kTime">0.0 <small>s</small></strong><b>QUASI-STEADY TIMESTEP</b></div>
+    <div class="stat"><span>EQUIVALENT RADIUS</span><strong id="kRadius">— <small>µm</small></strong><b id="kRadiusNote">BASAL PLANE</b></div>
+    <div class="stat"><span>ICE DEPOSITION</span><strong id="kMass">— <small>pg</small></strong><b>ADDED MASS</b></div>
+    <div class="stat"><span>LATENT HEATING</span><strong id="kHeat">— <small>mK</small></strong><b>MAXIMUM ΔT</b></div>
+    <div class="stat"><span>SIXFOLD HARMONIC</span><strong id="kSix">— <small>%</small></strong><b>|m6| / MEAN RADIUS</b></div>
+  </section>
+  <main class="workspace">
+    <div class="visual-column">
+      <section class="panel crystal-panel" aria-label="3D snowflake">
+        <div class="panel-top"><div><span class="index">01 / 3-D CRYSTAL</span><h2>Ice architecture <small>resolved outline / illuminated extrusion</small></h2></div><span class="chip" id="cameraLabel">ORBIT ENABLED</span></div>
+        <div id="viewport" class="viewport">
+          <div class="viewport-caption top-left">ICE Ih <span class="line"></span> BASAL PLANE</div>
+          <div class="viewport-caption top-right"><span id="sizeLabel">— µm DOMAIN</span><span id="viewLabel">PRISM GEOMETRY</span></div>
+          <div class="viewport-caption bottom-left">DRAG ROTATE <span>·</span> WHEEL ZOOM <span>·</span> DOUBLE-CLICK RESET VIEW</div>
+          <div class="axis-note" id="axisNote">X / Y · µm</div>
+          <div id="errorOverlay" class="error-overlay" hidden></div>
+        </div>
+        <div class="controlbar">
+          <button id="play" class="primary" type="button">❚❚ Pause</button>
+          <button id="step" type="button">→ Step</button>
+          <button id="reset" type="button">↺ Reset</button>
+          <button id="preset" type="button" title="Loads a dendritic morphology exploration preset">✳ Dendritic preset</button>
+          <label class="speed">SPEED <select id="speed"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select></label>
+          <span class="grow"></span><button id="viewTop" title="Look straight down" type="button">TOP</button><button id="viewIso" title="Reset perspective" type="button">ISO</button>
+        </div>
+      </section>
+      <div class="lower-main">
+        <section class="panel field-panel" aria-label="Spatial field slice">
+          <div class="panel-top"><div><span class="index">02 / SPATIAL FIELDS</span><h2>Transport field <small>actual solver grid</small></h2></div><select id="field"><option value="vapor">Vapor excess u</option><option value="temperature">ΔT [K]</option><option value="occupancy">Ice fraction φ</option></select></div>
+          <div class="field-wrap"><canvas id="fieldCanvas" aria-label="Solver field image"></canvas><div class="field-scale"><span id="fieldMin">—</span><div class="scale-gradient"></div><span id="fieldMax">—</span></div></div>
+          <div class="field-footer"><span id="fieldInspect">HOVER FIELD TO INSPECT A CELL</span><span>GRID <b id="gridDim">—</b></span></div>
+        </section>
+        <section class="panel inspect-panel" aria-label="Physical interface budget">
+          <div class="panel-top"><div><span class="index">03 / PHYSICS BUDGET</span><h2>Interface diagnostics</h2></div><span class="chip">MEASURED</span></div>
+          <dl id="budget" class="budget">
+            <div><dt>Vapor supersaturation at interface</dt><dd id="bSigma">—</dd></div>
+            <div><dt>Mean prism attachment α</dt><dd id="bAlpha">—</dd></div>
+            <div><dt>Basal velocity</dt><dd id="bBasal">—</dd></div>
+            <div><dt>Local interface cells</dt><dd id="bCells">—</dd></div>
+            <div><dt>Curvature (mean)</dt><dd id="bCurve">—</dd></div>
+            <div><dt>Capillary exponent (mean)</dt><dd id="bCap">—</dd></div>
+            <div><dt>Mass flux rate</dt><dd id="bFlux">—</dd></div>
+          </dl>
+          <div class="notice">The displayed solid is reconstructed from the resolved 2-D phase-field contour; depth represents the model's basal thickness. It is <strong>not</strong> a full 3-D diffusion solution.</div>
+        </section>
+      </div>
     </div>
-    <div class="hud" id="hud">—</div>
-    <div class="logo">FlexoSnow v0.1</div>
-  </div>
-  <div id="pane"></div>
+    <aside class="panel instrument" aria-label="Experiment controls">
+      <div class="panel-top"><div><span class="index">EXPERIMENT / PARAMETERS</span><h2>Growth conditions</h2></div><span class="chip">REPRODUCIBLE</span></div>
+      <div class="sidecontent">
+        <div class="section-title">01 — ENVIRONMENT</div>
+        <label class="parameter" for="temp"><span>Temperature <b id="tempValue">−15 °C</b></span><input type="range" id="temp" min="-30" max="-2" step="1" value="-15"><small>Ambient far-field temperature</small></label>
+        <label class="parameter" for="sigma"><span>Ice supersaturation <b id="sigmaValue">8.0 %</b></span><input type="range" id="sigma" min="1" max="25" step=".5" value="8"><small>Far-field vapor excess over ice</small></label>
+        <label class="parameter" for="pressure"><span>Ambient pressure <b id="pressureValue">101.3 kPa</b></span><input type="range" id="pressure" min="60" max="110" step="1" value="101"><small>Transport coefficients scaled with pressure</small></label>
+        <div class="section-title">02 — FACET KINETICS</div>
+        <label class="parameter" for="anisotropy"><span>Sixfold anisotropy <b id="anisotropyValue">0.18</b></span><input type="range" id="anisotropy" min="0" max=".70" step=".02" value=".18"><small>Azimuthal modulation: 1 + a cos(6θ)</small></label>
+        <label class="parameter" for="prism"><span>Prism nucleation barrier <b id="prismValue">0.0030</b></span><input type="range" id="prism" min=".0005" max=".02" step=".0005" value=".003"><small>σ₀ in α = A exp(−σ₀ / σ_surface)</small></label>
+        <label class="parameter" for="seed"><span>Initial seed radius <b id="seedValue">1.5 µm</b></span><input type="range" id="seed" min="1" max="4" step=".25" value="1.5"><small>Postcritical ice seed; not nucleation</small></label>
+        <div class="toggles"><label><input id="sdak" type="checkbox"> SDAK / edge enhancement</label><label><input id="capillarity" type="checkbox" checked> Gibbs–Thomson curvature</label><label><input id="rotate" type="checkbox" checked> Turntable camera</label></div>
+        <div class="pending" id="pending" hidden>PARAMETERS CHANGED · RESET TO APPLY</div>
+        <button id="apply" class="wide primary" type="button">↺ APPLY / RESTART SOLVER</button>
+        <div class="section-title">03 — MEASUREMENT / OUTPUT</div>
+        <div class="exports"><button id="csv" type="button">↓ Data CSV</button><button id="png" type="button">↓ View PNG</button></div>
+        <div class="section-title">04 — MODEL STATUS</div>
+        <p class="sidebar-note">Nine-point isotropic vapor/heat relaxation. Phase-fraction interface, curvature correction, prism/basal attachment kinetics, and latent-heat feedback. Deterministic for a fixed configuration.</p>
+        <div class="status-pair"><span>Model</span><strong>QUASI-STEADY 2.5-D</strong></div><div class="status-pair"><span>Scenario</span><strong id="scenario">REFERENCE · −15 °C</strong></div><div class="status-pair"><span>Units</span><strong>SI INTERNAL</strong></div>
+      </div>
+    </aside>
+  </main>
+  <section class="graphs">
+    <div class="graphs-head"><div><span class="index">SYNCHRONIZED DIAGNOSTICS / ACTUAL SOLVER HISTORY</span><h2>Growth dynamics</h2></div><div class="scrubber"><button id="live" type="button" class="active">● LIVE</button><label for="scrub">REPLAY</label><input id="scrub" type="range" min="0" max="0" value="0"><output id="scrubTime">t = 0.0 s</output></div></div>
+    <div class="graph-grid">
+      <section class="panel graph-card"><div class="graph-heading"><span>04 / RADIAL TRANSPORT</span><strong>Six-arm vapor field</strong><small>u = cᵥ/cₛₐₜ(T∞) − 1</small></div><canvas id="radialGraph" aria-label="Six ray vapor profiles chart"></canvas><div class="legend">EACH TRACE = A CRYSTAL AXIS · COMMON SCALE</div></section>
+      <section class="panel graph-card"><div class="graph-heading"><span>05 / GROWTH HISTORY</span><strong>Radius &amp; half-thickness</strong><small>µm vs model seconds</small></div><canvas id="growthGraph" aria-label="Growth time series chart"></canvas><div class="legend"><span class="legend-line blue"></span> EQUIVALENT RADIUS <span class="legend-line amber"></span> BASAL HALF-THICKNESS</div></section>
+      <section class="panel graph-card"><div class="graph-heading"><span>06 / SYMMETRY SPECTRUM</span><strong>Crystal anisotropy</strong><small>relative angular Fourier amplitude</small></div><canvas id="modeGraph" aria-label="Morphology harmonic mode chart"></canvas><div class="legend"><span class="legend-line blue"></span> m = 6 <span class="legend-line lavender"></span> m = 4 (GRID BIAS CHECK)</div></section>
+    </div>
+  </section>
+  <footer>FLEXOELECTRIC SNOWFLAKES · SCIENTIFIC DEMONSTRATOR <span>MODEL ASSUMPTIONS SHOWN · NO SYNTHETIC MEASUREMENT DATA · <a href="./app/README.md">METHODS ↗</a></span></footer>
 </div>
-<!-- Three.js & helpers --><script src="https://unpkg.com/three@0.124.0/build/three.min.js"></script>
-<script src="https://unpkg.com/three@0.124.0/examples/js/controls/OrbitControls.js"></script>
-<!-- dat.GUI --><script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.9/dat.gui.min.js"></script>
-<script>
-/*
-FlexoSnow - A 3D Flexoelectric Snowflake Simulation
----------------------------------------------------
-This file contains a self-contained simulation of snowflake growth,
-incorporating flexoelectric effects.
-
-Controls:
-- Mouse: Orbit the camera.
-- Scroll: Zoom in and out.
-- Buttons: Play/Pause, Step, Reset, Randomize, Export PNG.
-- Keyboard:
-  - Space: Play/Pause
-  - R: Reset
-  - S: Step Simulation
-  - L: Toggle Camera Auto-Rotation
-
-The control pane on the right allows for real-time adjustment of all
-physical and visual parameters of the simulation.
-*/
-(() => {
-  const TAU = Math.PI*2;
-  const rand = (a=1,b=0) => b + (a-b)*Math.random();
-  const clamp = (x,lo,hi)=> Math.max(lo, Math.min(hi, x));
-
-  let frameCount = 0;
-  let fps = 0;
-  let lastFpsUpdate = 0;
-  let lastMeanKappa = 0;
-  let lastMeanDL = 0;
-  let simTime = 0;
-  let lastDataPushTime = 0;
-  const timeSeriesData = [];
-
-  const VIZ = {
-    scale: 3000,
-    wiggleGain: 3e5,
-  };
-
-  const params = {
-    // Microphysics
-    T: -15.0,
-    alpha_basal: 0.01,
-    alpha_prism: 0.08,
-    qllBoost: false,
-    D: 2.2e-5,
-    fall_speed: 0.5,
-    lab_needle_mode: false,
-
-    // Field
-    E_mag: 1500, E_theta: 45, E_phi: 10,
-
-    // Flexo & Growth
-    mu_eff: 1e-6, S: 0.08,
-
-    // Branching
-    v_tip_th: 1e-6, sigma_sb: 0.05, spacing_gain: 2.0, branchScale: 0.55,
-
-    // Wiggle
-    omega: 12, zeta: 0.12, gustSigma: 2e-8, gustTau: 0.25,
-
-    // Geometry & Time
-    armNodes: 24, L0: 6e-4, w0: 2.5e-5, dt: 0.016, speed: 1.0,
-
-    // View
-    autoRotate: true, grid: false, axes: false, wireframe: false, seed: 1,
-  };
-
-  const KAPPA_COEFF = 3000;
-  const A_CLIP = 3e-7;
-  const ADOT_CLIP = 2e-5;
-
-  const sceneEl = document.getElementById('scene');
-  const hudEl = document.getElementById('hud');
-  const renderer = new THREE.WebGLRenderer({antialias:true, alpha:false});
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  renderer.setSize(sceneEl.clientWidth, sceneEl.clientHeight);
-  renderer.setClearColor(0x0c0f12, 1);
-  sceneEl.appendChild(renderer.domElement);
-
-  const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0x0c0f12, 2, 5);
-  const camera = new THREE.PerspectiveCamera(50, sceneEl.clientWidth/sceneEl.clientHeight, 0.001, 100);
-  camera.position.set(0.8, 0.7, 1.2);
-
-  const controls = new THREE.OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-
-  const light = new THREE.HemisphereLight(0xaed6ff, 0x0c0f12, 0.9);
-  scene.add(light);
-  const dir = new THREE.DirectionalLight(0xffffff, 0.8);
-  dir.position.set(2,2,3);
-  scene.add(dir);
-
-  const fieldArrow = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), new THREE.Vector3(0,0,0), 0.6, 0x66ccff, 0.02, 0.06);
-  scene.add(fieldArrow);
-
-  const grid = new THREE.GridHelper(4, 20, 0x1e2b38, 0x0f1821);
-  grid.visible = params.grid; scene.add(grid);
-
-  const axes = new THREE.AxesHelper(1);
-  axes.visible = params.axes;
-  scene.add(axes);
-
-  const center = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.06, 0.06, 0.02, 6),
-    new THREE.MeshStandardMaterial({color:0x9fd0ff, metalness:0.2, roughness:0.4, transparent:true, opacity:0.55})
-  );
-  center.rotation.x = Math.PI*0.5;
-  center.scale.setScalar(0.0015 * VIZ.scale);
-  scene.add(center);
-
-  const flakeGroup = new THREE.Group();
-  scene.add(flakeGroup);
-
-  const branchMarkers = new THREE.Group();
-  scene.add(branchMarkers);
-  const markerData = [];
-
-  const ARM_COUNT = 6;
-  const SEGMENTS = () => params.armNodes;
-
-  const cylGeom = new THREE.CylinderGeometry(1,1,1, 10, 1, true);
-  cylGeom.translate(0, 0.5, 0);
-
-  const armMaterial = new THREE.MeshStandardMaterial({
-    color:0xcfe9ff, emissive:0x001018, metalness:0.15, roughness:0.35,
-    transparent:true, opacity:0.75, side:THREE.DoubleSide, vertexColors: true,
-  });
-
-  function makeArm(baseAngle){
-    const nodes = new Array(SEGMENTS()+1).fill(0).map((_,i)=>({
-      s: i/(SEGMENTS()), pos: new THREE.Vector3(), w: params.w0, thickness: params.w0,
-    }));
-    const geom = new THREE.BufferGeometry();
-    const mesh = new THREE.Mesh(geom, armMaterial);
-    return {
-      baseAngle, A: 0, Adot: 0, P: 0,
-      nodes, branches: [],
-      mesh: mesh,
-    };
-  }
-
-  let arms = [];
-  function resetArms(){
-    for (const a of arms){ flakeGroup.remove(a.mesh); a.mesh.geometry.dispose?.(); }
-    arms = [];
-    for(let k=0;k<ARM_COUNT;k++){
-      const a = makeArm((TAU/ARM_COUNT)*k);
-      flakeGroup.add(a.mesh);
-      arms.push(a);
-    }
-  }
-
-  function EVector(){
-    const th = params.E_theta * Math.PI/180;
-    const ph = params.E_phi * Math.PI/180;
-    return new THREE.Vector3(Math.cos(th)*Math.cos(ph), Math.sin(th)*Math.cos(ph), Math.sin(ph)).multiplyScalar(params.E_mag);
-  }
-
-  function updateFieldArrow(){
-    fieldArrow.setDirection(EVector().clone().normalize());
-  }
-
-  function updateNakaya() {
-    const T = params.T;
-    if (T > -4) { // Plates
-      params.alpha_prism = 0.08;
-      params.alpha_basal = 0.01;
-    } else if (T > -10) { // Columns
-      params.alpha_prism = 0.01;
-      params.alpha_basal = 0.06;
-    } else if (T > -25) { // Plates
-      params.alpha_prism = 0.08;
-      params.alpha_basal = 0.01;
-    } else { // Columns
-      params.alpha_prism = 0.01;
-      params.alpha_basal = 0.06;
-    }
-    // Update GUI
-    for (const i in gui.__folders['Thermo & Kinetics'].__controllers) {
-      gui.__folders['Thermo & Kinetics'].__controllers[i].updateDisplay();
-    }
-  }
-
-  const seedObj = {v: 1};
-  function randn(seedObj){
-    let s = seedObj.v = (1664525*seedObj.v + 1013904223) >>> 0;
-    const u1 = (s & 0xffff)/0x10000; s = seedObj.v = (1664525*seedObj.v + 1013904223) >>> 0;
-    const u2 = (s & 0xffff)/0x10000;
-    return Math.sqrt(-2*Math.log(Math.max(1e-9,u1))) * Math.cos(TAU*u2);
-  }
-
-  let running = true;
-  function resetState(){
-    timeSeriesData.length = 0;
-    simTime = 0;
-    lastDataPushTime = 0;
-    seedObj.v = Math.max(1, params.seed|0);
-    resetArms();
-    for (const arm of arms){
-      const L = params.L0;
-      const r = new THREE.Vector3(Math.cos(arm.baseAngle), Math.sin(arm.baseAngle), 0);
-      for (let i=0;i<arm.nodes.length;i++){
-        arm.nodes[i].pos.copy(r.clone().multiplyScalar(i/(arm.nodes.length-1)*L));
-        arm.nodes[i].w = params.w0;
-      }
-      arm.A = 0; arm.Adot = 0; arm.P = 0;
-    }
-    updateMeshes(true);
-  }
-
-  const tipCurvature = (arm) => KAPPA_COEFF * arm.A;
-
-  function step(dt){
-    const E = EVector();
-    let totalDip = new THREE.Vector3();
-    let meanKappa=0, meanDL=0;
-
-    for (const arm of arms){
-      const gust = params.gustSigma * Math.sqrt(2*dt/Math.max(1e-6, params.gustTau)) * randn(seedObj);
-      const omega = params.omega * TAU;
-      const A_ddot = gust - 2*params.zeta*omega*arm.Adot - (omega*omega)*arm.A;
-      arm.Adot = clamp(arm.Adot + A_ddot*dt, -ADOT_CLIP, ADOT_CLIP);
-      arm.A    = clamp(arm.A + arm.Adot*dt,  -A_CLIP,   A_CLIP);
-
-      const kappa = tipCurvature(arm);
-      const P = params.mu_eff * kappa;
-      arm.P = P;
-
-      const armDir = new THREE.Vector3(Math.cos(arm.baseAngle), Math.sin(arm.baseAngle), 0);
-      totalDip.add(armDir.clone().multiplyScalar(Math.abs(P) * (60e-6*60e-6) * 0.4e-3));
-
-      // --- Full Microphysics Growth Law ---
-      const kB = 1.38e-23;
-      const m = 2.99e-26;
-      const Sc = 0.7;
-
-      const T_kelvin = params.T + 273.15;
-      const v_kin = Math.sqrt(kB * T_kelvin / (2 * Math.PI * m));
-
-      const L_arm = arm.nodes[arm.nodes.length-1].pos.length();
-      const Re = params.fall_speed * L_arm / 1.5e-5;
-      const Sh = 2 + 0.6 * Math.sqrt(Re) * Math.cbrt(Sc);
-
-      const alpha_diff = (params.D * Sh) / ((L_arm || 1e-6) * v_kin);
-
-      const E_local = E.dot(armDir);
-      let flexo_bias = (1 + 1e-4*Math.abs(E_local)/1000 + 1e-2*Math.abs(P));
-      if(params.lab_needle_mode && params.E_mag > 2000) flexo_bias *= 5.0;
-
-      const alpha_basal = params.alpha_basal * (params.qllBoost ? 2.0 : 1.0);
-      const v_basal = (alpha_basal * v_kin) / (alpha_basal + alpha_diff) * params.S * flexo_bias;
-      const dL = v_basal * dt * params.speed * 1e3;
-      meanDL += dL;
-      if (dL > 0) arm.nodes[arm.nodes.length-1].pos.add(armDir.clone().multiplyScalar(dL));
-
-      const alpha_prism = params.alpha_prism * (params.qllBoost ? 2.0 : 1.0);
-      const v_prism = (alpha_prism * v_kin) / (alpha_prism + alpha_diff) * params.S * flexo_bias;
-      const dW = v_prism * dt * params.speed * 1e3;
-
-      for (let i = 0; i < arm.nodes.length; i++) {
-        arm.nodes[i].w = Math.max(params.w0 * 0.5, Math.min(params.w0 * 3.0, arm.nodes[i].w + dW));
-        arm.nodes[i].thickness = Math.max(params.w0 * 0.5, Math.min(params.w0 * 3.0, arm.nodes[i].thickness + dL*0.1));
-      }
-
-      const v_tip = dL/dt;
-      const s_since_last = arm.nodes[arm.nodes.length-1].pos.length() - (arm.branches.length ? arm.branches[arm.branches.length-1].s0 * params.L0 : 0);
-      const spacing_th = params.spacing_gain * Math.sqrt(params.D / (v_tip + 1e-9));
-
-      if (v_tip > params.v_tip_th && params.S > params.sigma_sb && s_since_last > spacing_th) {
-        const lastNode = arm.nodes[arm.nodes.length-1];
-        const normalSign = (Math.random()<0.5)? +1 : -1;
-        const bLen = params.branchScale * params.L0 * 0.25;
-        const branchAngle = arm.baseAngle + normalSign * Math.PI / 3;
-        const branchDir = new THREE.Vector3(Math.cos(branchAngle), Math.sin(branchAngle), 0);
-
-        arm.branches.push({
-          s0: 1, normal: normalSign, length: bLen,
-          nodes: [ lastNode.pos.clone(), lastNode.pos.clone().add(branchDir.multiplyScalar(bLen)) ]
-        });
-        const marker = new THREE.Mesh(new THREE.SphereGeometry(0.01, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true }));
-        marker.position.copy(lastNode.pos).multiplyScalar(VIZ.scale);
-        branchMarkers.add(marker);
-        markerData.push({ mesh: marker, time: 0 });
-      }
-      meanKappa += Math.abs(kappa);
-
-      for (let i=1;i<arm.nodes.length;i++){
-        const s = i/(arm.nodes.length-1);
-        const baseVec = arm.nodes[i].pos.clone().sub(arm.nodes[i-1].pos);
-        const segLen = baseVec.length();
-        const dir = baseVec.normalize();
-        const normal = new THREE.Vector3(-armDir.y, armDir.x, 0).normalize();
-        const wobbleAmp = arm.A * VIZ.wiggleGain;
-        const wobble = normal.clone().multiplyScalar(wobbleAmp * Math.sin(6*s*TAU + 0.7));
-        arm.nodes[i].pos.copy(arm.nodes[i-1].pos.clone().add(dir.multiplyScalar(segLen)).add(wobble));
-      }
-    }
-    const Tz = new THREE.Vector3().crossVectors(totalDip, E).z;
-    flakeGroup.rotation.z += clamp((Tz/1.6e-10) * dt * 0.5, -0.01, 0.01);
-    updateMeshes(false);
-    lastMeanKappa = meanKappa;
-    lastMeanDL = meanDL;
-
-    simTime += dt;
-    if (simTime > lastDataPushTime + 0.1) {
-      lastDataPushTime = simTime;
-      let totalLength = 0, totalWidth = 0, totalSegments = 0, totalP = 0;
-      for (const arm of arms) {
-        let armLength = 0;
-        for (let i = 1; i < arm.nodes.length; i++) {
-          armLength += arm.nodes[i].pos.distanceTo(arm.nodes[i-1].pos);
-        }
-        totalLength += armLength;
-        for (let i = 0; i < arm.nodes.length; i++) {
-          totalWidth += arm.nodes[i].w;
-        }
-        totalSegments += arm.nodes.length;
-        totalP += Math.abs(arm.P || 0);
-      }
-      const branchCount = arms.reduce((a,b)=>a+b.branches.length,0);
-      timeSeriesData.push({
-        time: simTime,
-        avg_length: totalLength / (arms.length || 1),
-        avg_width: totalWidth / (totalSegments || 1),
-        branch_count: branchCount,
-        mean_P: totalP / (arms.length || 1),
-      });
-    }
-  }
-
-  function updateMeshes(forceRebuild) {
-    const hexVerts = [];
-    for (let i = 0; i < 6; i++) {
-      const angle = (i / 6) * TAU;
-      hexVerts.push(new THREE.Vector2(Math.cos(angle), Math.sin(angle)));
-    }
-
-    for (const arm of arms) {
-      const vertices = [];
-      const colors = [];
-
-      const P_abs = Math.abs(arm.P || 0);
-      const lerpFactor = clamp(P_abs / 5e-10, 0, 1);
-
-      const plateColor = new THREE.Color(0xa0c0ff);
-      const columnColor = new THREE.Color(0xffa0a0);
-      const baseColor = params.alpha_prism > params.alpha_basal ? plateColor : columnColor;
-      const tipColor = baseColor.clone().lerp(new THREE.Color(0xffffff), lerpFactor);
-
-      for (let i = 0; i < arm.nodes.length - 1; i++) {
-        const n1 = arm.nodes[i];
-        const n2 = arm.nodes[i+1];
-
-        const dir = n2.pos.clone().sub(n1.pos).normalize();
-        const up = new THREE.Vector3(0, 0, 1);
-        const right = new THREE.Vector3().crossVectors(dir, up).normalize();
-        up.crossVectors(right, dir);
-
-        const mat1 = new THREE.Matrix4().makeBasis(right, up, dir).setPosition(n1.pos);
-        const mat2 = new THREE.Matrix4().makeBasis(right, up, dir).setPosition(n2.pos);
-
-        const c = (i / (arm.nodes.length - 2) > 0.7) ? tipColor : baseColor;
-
-        if (i < arm.nodes.length - 2) { // Prism segments
-          for (let j = 0; j < 6; j++) {
-            const v1 = hexVerts[j];
-            const v2 = hexVerts[(j + 1) % 6];
-
-            const p1a = new THREE.Vector3(v1.x * n1.w, v1.y * n1.thickness, 0).applyMatrix4(mat1);
-            const p1b = new THREE.Vector3(v2.x * n1.w, v2.y * n1.thickness, 0).applyMatrix4(mat1);
-            const p2a = new THREE.Vector3(v1.x * n2.w, v1.y * n2.thickness, 0).applyMatrix4(mat2);
-            const p2b = new THREE.Vector3(v2.x * n2.w, v2.y * n2.thickness, 0).applyMatrix4(mat2);
-
-            vertices.push(p1a.x, p1a.y, p1a.z,  p1b.x, p1b.y, p1b.z,  p2a.x, p2a.y, p2a.z);
-            vertices.push(p1b.x, p1b.y, p1b.z,  p2b.x, p2b.y, p2b.z,  p2a.x, p2a.y, p2a.z);
-
-            for(let k=0; k<6; k++) colors.push(c.r, c.g, c.b);
-          }
-        } else { // Tip pyramid
-          const apex = n2.pos;
-          for (let j = 0; j < 6; j++) {
-            const v1 = hexVerts[j];
-            const v2 = hexVerts[(j + 1) % 6];
-
-            const p1a = new THREE.Vector3(v1.x * n1.w, v1.y * n1.thickness, 0).applyMatrix4(mat1);
-            const p1b = new THREE.Vector3(v2.x * n1.w, v2.y * n1.thickness, 0).applyMatrix4(mat1);
-
-            vertices.push(p1a.x, p1a.y, p1a.z,  p1b.x, p1b.y, p1b.z,  apex.x, apex.y, apex.z);
-
-            for(let k=0; k<3; k++) colors.push(tipColor.r, tipColor.g, tipColor.b);
-          }
-        }
-      }
-
-      for(let i=0; i<vertices.length; i++) vertices[i] *= VIZ.scale;
-
-      arm.mesh.geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-      arm.mesh.geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-      arm.mesh.geometry.computeVertexNormals();
-    }
-  }
-
-  const gui = new dat.GUI({ autoPlace: false });
-  const paneEl = document.getElementById('pane');
-  paneEl.appendChild(gui.domElement);
-  Object.assign(paneEl.firstChild.style, {position:'absolute', right:'10px', top:'10px', width:'340px'});
-
-  const fViz = gui.addFolder('Visualization');
-  fViz.add(VIZ, 'scale', 500, 10000, 100).onChange(()=>{ center.scale.setScalar(0.0015*VIZ.scale); updateMeshes(true); });
-  fViz.add(VIZ, 'wiggleGain', 1e3, 1e6);
-  fViz.add(params, 'axes').onChange((v)=>axes.visible=v);
-  fViz.add(params, 'wireframe').onChange((v)=>armMaterial.wireframe=v);
-  fViz.open();
-
-  const fField = gui.addFolder('Field');
-  fField.add(params, 'E_mag', 0, 5000, 10).onChange(updateFieldArrow);
-  fField.add(params, 'E_theta', 0, 180, 1).onChange(updateFieldArrow);
-  fField.add(params, 'E_phi', -90, 90, 1).onChange(updateFieldArrow);
-  fField.open();
-
-  const fThermo = gui.addFolder('Thermo & Kinetics');
-  fThermo.add(params, 'T', -30, 0, 0.1).name('Temp (°C)').onChange(updateNakaya);
-  fThermo.add(params, 'alpha_basal', 0, 1).name('α_basal');
-  fThermo.add(params, 'alpha_prism', 0, 1).name('α_prism');
-  fThermo.add(params, 'qllBoost').name('QLL Boost');
-  fThermo.open();
-
-  const fDiffusion = gui.addFolder('Diffusion & Ventilation');
-  fDiffusion.add(params, 'D', 1e-5, 5e-5).name('D (m²/s)');
-  fDiffusion.add(params, 'fall_speed', 0, 2).name('Fall Speed (m/s)');
-  fDiffusion.open();
-
-  const fFlexo = gui.addFolder('Flexo & Growth');
-  fFlexo.add(params, 'mu_eff', 0, 5e-6);
-  fFlexo.add(params, 'S', 0, 0.2);
-  fFlexo.add(params, 'lab_needle_mode').name('Lab Needle Mode');
-
-  const fBranching = gui.addFolder('Branching');
-  fBranching.add(params, 'v_tip_th', 0, 1e-5, 1e-7).name('v_tip Threshold');
-  fBranching.add(params, 'sigma_sb', 0, 0.2, 0.01).name('σ_sb Threshold');
-  fBranching.add(params, 'spacing_gain', 0, 10, 0.1).name('Spacing Gain');
-  fBranching.add(params, 'branchScale', 0.2, 1.0);
-
-  const fWiggle = gui.addFolder('Wiggle');
-  fWiggle.add(params, 'omega', 1, 30);
-  fWiggle.add(params, 'zeta', 0, 0.5);
-  fWiggle.add(params, 'gustSigma', 0, 1e-6);
-  fWiggle.add(params, 'gustTau', 0.05, 1.0);
-
-  const fGeom = gui.addFolder('Geometry & Time');
-  fGeom.add(params, 'armNodes', 6, 48, 1).onChange(resetState);
-  fGeom.add(params, 'speed', 0.1, 4);
-  fGeom.add(params, 'autoRotate').onChange((v)=>controls.autoRotate=v);
-  fGeom.add(params, 'grid').onChange((v)=>grid.visible=v);
-
-  document.getElementById('play').onclick = ()=> running = true;
-  document.getElementById('pause').onclick = ()=> running = false;
-  document.getElementById('step').onclick = ()=> { running = false; step(params.dt); render(); };
-  document.getElementById('reset').onclick = ()=> resetState();
-  document.getElementById('randomize').onclick = ()=> { params.seed = (1 + Math.random()*9999)|0; resetState(); };
-  document.getElementById('exportPNG').onclick = ()=> { renderer.render(scene, camera); const a = document.createElement('a'); a.download = 'flexo_snowflake.png'; a.href = renderer.domElement.toDataURL('image/png'); a.click(); };
-  document.getElementById('exportCSV').onclick = ()=> {
-    const headers = Object.keys(timeSeriesData[0] || {});
-    let csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n";
-    csvContent += timeSeriesData.map(row => headers.map(h => row[h]).join(",")).join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "snowflake_data.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  addEventListener('resize', ()=>{ renderer.setSize(sceneEl.clientWidth, sceneEl.clientHeight); camera.aspect = sceneEl.clientWidth/sceneEl.clientHeight; camera.updateProjectionMatrix(); });
-  addEventListener('keydown', (e)=>{ if (e.code === 'Space') running = !running; else if (e.code === 'KeyR') resetState(); else if (e.code === 'KeyS') { running = false; step(params.dt); render(); } else if (e.code === 'KeyL') params.autoRotate = !params.autoRotate; });
-
-  updateFieldArrow();
-  resetState();
-
-  let tPrev = performance.now();
-  function tick(){
-    const tNow = performance.now();
-    let dt = (tNow - tPrev)/1000;
-    tPrev = tNow;
-    dt = Math.min(0.05, dt);
-
-    if (running){
-      const substeps = Math.max(1, Math.floor(params.speed));
-      for (let i=0;i<substeps;i++) step(params.dt / substeps);
-    }
-
-    for (let i = markerData.length - 1; i >= 0; i--) {
-      markerData[i].time += dt;
-      if (markerData[i].time > 1.5) {
-        branchMarkers.remove(markerData[i].mesh);
-        markerData[i].mesh.geometry.dispose();
-        markerData[i].mesh.material.dispose();
-        markerData.splice(i, 1);
-      } else {
-        markerData[i].mesh.material.opacity = 1.0 - (markerData[i].time / 1.5);
-      }
-    }
-
-    frameCount++;
-    if (tNow > lastFpsUpdate + 1000) {
-      fps = frameCount; frameCount = 0; lastFpsUpdate = tNow;
-    }
-    const avgK = (lastMeanKappa / (arms.length||1)).toFixed(2);
-    const avgDL = (lastMeanDL / (arms.length||1) / (params.dt || 0.016)).toExponential(2);
-    hudEl.textContent = `FPS: ${fps} | E=${params.E_mag.toFixed(0)} V/m  |  avg|κ_tip|=${avgK}  |  growth≈${avgDL} m/s  |  branches=${arms.reduce((a,b)=>a+b.branches.length,0)}`;
-
-    controls.update();
-    renderer.render(scene, camera);
-    requestAnimationFrame(tick);
-  }
-  tick();
-})();
-</script>
+<script type="module" src="./app/observatory.js"></script>
 </body>
 </html>
