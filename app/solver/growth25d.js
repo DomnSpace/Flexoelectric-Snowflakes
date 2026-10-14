@@ -249,7 +249,7 @@ export function growthMorphology(state,rays=120){
 }
 
 export function fieldSample(state,i,j){
-  const k=id(i,j,state.N),base={uRef:state.sigma[k],deltaT:state.dT[k],ice:!!state.ice[k],phi:state.phi[k],heatSource:state.heatSource[k]};
+  const k=id(i,j,state.N),base={sigma:state.sigma[k],uRef:state.sigma[k],deltaT:state.dT[k],ice:!!state.ice[k],phi:state.phi[k],heatSource:state.heatSource[k]};
   if(!state.ice[k]){
     const cRef=saturationMassDensityIce(state.Tinf),cGas=cRef*Math.max(1e-9,1+state.sigma[k]),Tlocal=state.Tinf+state.dT[k],cEq=saturationMassDensityIce(Tlocal);
     base.localSupersaturation=cGas/cEq-1;base.growthPotential=Math.log(Math.max(1e-12,cGas/cEq));
