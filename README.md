@@ -20,7 +20,7 @@ Then visit http://localhost:8088/. Opening index.html via file:// is not support
 - Change environmental and facet parameters, then Apply / Restart solver. The pending badge distinguishes unsimulated slider changes from the active model configuration.
 - Orbit using drag, zoom using wheel, double-click to reset; TOP / ISO view presets. The solid is a 3-D prism extrusion of the actual 2-D phase-field contour, with depth from model basal thickness.
 - Spatial heatmap: reference-normalized vapor supersaturation (u = c_v / c_sat(T_inf) - 1), excess temperature, and actual ice fraction. Hover to inspect grid cells.
-- Three synchronized plots: six radial vapor traces, radius and basal thickness over time, and m=6 / m=4 angular modes.
+- Three synchronized plots: six radial vapor traces, radius and basal thickness over time, and m=6 / m=4 angular modes. Additional solver-derived field maps expose the electrostatic potential and |E| with live residual, polarization and equilibrium-correction diagnostics.
 - Replay slider inspects stored numerical snapshots; LIVE selects the newest snapshot. Replay does not overwrite solver history.
 - Data CSV exports captured model history with units. View PNG saves the WebGL crystal viewport.
 
@@ -28,7 +28,7 @@ Then visit http://localhost:8088/. Opening index.html via file:// is not support
 
 The solver in app/solver/growth25d.js includes nine-point isotropic 2-D quasi-steady vapor diffusion, latent thermal conduction, 2.5-D interface kinetics, Gibbs–Thomson correction, prism/basal attachment, optional SDAK edge enhancement, and angular modes from growthMorphology(). Three.js only extrudes the numerical contour.
 
-This is **not** a complete 3-D growth model, a calibrated atmospheric forecast, or a prediction of exact natural dendrites. There is no coupled airflow velocity field, full 3-D vapor/heat dynamics, or electrically driven flexoelectric term in this viewer. Parameters from the legacy electric-field toy should not be misrepresented as coupled to this resolved-growth solver.
+This is **not** a complete 3-D growth model, a calibrated atmospheric forecast, or a prediction of exact natural dendrites. There is no coupled airflow velocity field or full 3-D vapor/heat dynamics. The optional electrostatic module solves ∇·D=0 with spatial dielectric contrast and imposed flexoelectric polarization from a **prescribed**, not mechanically solved, strain gradient. Its dielectric energy correction to interface equilibrium is separately opt-in and not a validated growth law. See [ELECTROSTATICS.md](ELECTROSTATICS.md); the legacy electric-field toy is not reused.
 
 The uploaded SnowflakeWorkSample.cpp ends inside the relax function, and cannot be compiled verbatim; the existing JS physics module is used as the live source of truth.
 
@@ -37,6 +37,8 @@ The fixed 0.5-second model step and bounded 360-frame history make replay determ
 ## Validation
 
     node --check app/observatory.js
+    node --check app/solver/electric25d.js
+    node app/tests/electric25d.test.mjs
     node app/tests/observatory-contract.test.mjs
     node app/tests/run-all.mjs
 
