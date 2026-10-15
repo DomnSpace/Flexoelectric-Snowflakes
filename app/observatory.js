@@ -185,7 +185,7 @@ function sync() {
   $('kMass').innerHTML=num(pg(s.deposited),4)+' <small>pg</small>';
   $('kHeat').innerHTML=num((s.budget?.maxDeltaT||0)*1e3,2)+' <small>mK</small>';
   $('kSix').innerHTML=num((s.morph.modes[6].relative||0)*100,2)+' <small>%</small>';
-  $('sizeLabel').textContent=num(s.n*s.dx*1e6,1)+' µm DOMAIN';
+  $('sizeLabel').textContent=num((s.n-1)*s.dx*1e6,1)+' µm DOMAIN · '+s.n+'²';
   $('stepLabel').textContent='STEP '+String(Math.round(s.t/STEPTIME)).padStart(4,'0');
   $('scrubTime').textContent='t = '+num(s.t,1)+' s';
   $('gridDim').textContent=s.n+'×'+s.n;
