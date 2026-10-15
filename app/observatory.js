@@ -8,6 +8,8 @@ import {GROWTH_HABITS, GRID_CHOICES, auditGrowthDomain, modelDomainUm} from './s
 import {saturationVaporPressureWaterMK, saturationVaporPressureIceMK} from './solver/thermo.js';
 import {makeHexGrowthState,resolvedHexGrowthStep,hexGrowthMorphology,
   auditHexDomain,enlargeHexDomain,hexCellAtXY} from './solver/hex25d.js';
+import {versionIceSnapshot,verifyIceSnapshot} from './solver/ice-snapshot-v1.js';
+import {buildUniformLayerGroup,disposeLayerGroup,FIVE_LAYER_COUNT} from './render/uniform-five-layers.js';
 
 /*
  * Snowflake Observatory
@@ -53,7 +55,7 @@ let state, frames=[], selectedIndex=0, replay=false, playing=true, pending=false
 let activeHabit='custom';
 const isHex=()=>state?.topology==='triangular';
 const auditState=()=>isHex()?auditHexDomain(state):auditGrowthDomain(state);
-let lastFrame=performance.now(), accumulator=0, mesh=null, edge=null, worldScale=1;
+let lastFrame=performance.now(), accumulator=0, mesh=null, edge=null, layerGroup=null, worldScale=1;
 let scene, camera, controls, renderer, crystal, snowLight;
 let drawCanvas;
 
@@ -108,7 +110,7 @@ function snap() {
   // 720 phase-derived radial samples resolve contour angles without making
   // the 0.75 µm numerical solver falsely appear atomically resolved.
   const m=isHex()?hexGrowthMorphology(state,720):growthMorphology(state,180);
-  return {
+  return versionIceSnapshot({
     t:state.t, n:state.N, dx:state.dx, Tinf:state.Tinf,
     topology:state.topology||'square',mask:isHex()?new Uint8Array(state.mask):null,
     expansions:state.domainExpansions||0,
@@ -128,7 +130,7 @@ function snap() {
     audit:auditState(),habit:activeHabit,
     waterSaturationPercent:cloudSaturationSigma(state.Tinf-273.15)*100,
     deposited:state.totalDepositedMass, energy:state.totalLatentHeat
-  };
+  });
 }
 function current() {return frames[clamp(selectedIndex,0,frames.length-1)];}
 function capture() {
@@ -217,6 +219,9 @@ function play() {
 }
 function sync() {
   const s=current();if(!s)return;
+  verifyIceSnapshot(s);
+  $('snapshotVersion').textContent='v'+s.snapshotSchema.version+' · '+s.snapshotSchema.topology;
+  $('snapshotRepresentation').textContent='UNIFORM SLAB · NO LOCAL HEIGHT';
   $('kTime').innerHTML=num(s.t,1)+' <small>s</small>';
   $('kRadius').innerHTML=num(um(s.morph.equivalentBasalRadius),2)+' <small>µm</small>';
   $('kMass').innerHTML=num(pg(s.deposited),4)+' <small>pg</small>';
@@ -343,7 +348,25 @@ function viewTop(){
 function updateMesh(s) {
   if(!crystal)return;
   if(mesh){crystal.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();}
-  if(edge){crystal.remove(edge);edge.geometry.dispose();edge.material.dispose();}
+  if(edge){crystal.remove(edge);edge.geometry.dispose();edge.material.dispose();edge=null;}
+  if(layerGroup){crystal.remove(layerGroup);disposeLayerGroup(layerGroup);layerGroup=null;}
+  // Render-only selection: the same versioned snapshot and solved ice outline.
+  // Switching between views MUST NOT advance or change the physics.
+  const layered=$('iceView').value==='five';
+  if(layered){
+    const result=buildUniformLayerGroup(THREE,s);
+    layerGroup=result.group;
+    crystal.add(layerGroup);
+    const maxRadius=Math.max(3.2,um(s.morph.equivalentBasalRadius)*1.5);
+    worldScale=2.5/maxRadius;
+    crystal.scale.setScalar(worldScale);
+    $('viewport').dataset.iceSlices=String(layerGroup.children.filter(x=>x.isMesh).length);
+    $('viewLabel').textContent='5 × 24.5% TRANSLUCENT SLICES · UNIFORM '+num(um(result.plan.physicalThicknessM),2)+' µm';
+    $('sliceStatus').textContent='PREVIEW ONLY · 5 OPTICAL HEIGHT SLICES · NO LOCAL THICKNESS SOLVER';
+    return;
+  }
+  $('viewport').dataset.iceSlices='0';
+  $('sliceStatus').textContent='SOLID LEGACY EXTRUSION · UNIFORM THICKNESS';
   const radii=s.morph.radius;
   const n=radii.length;
   const shape=new THREE.Shape();
@@ -735,6 +758,7 @@ function setupEvents(){
   $('rotate').addEventListener('change',()=>{if(controls)controls.autoRotate=$('rotate').checked;});
   $('viewTop').addEventListener('click',viewTop);
   $('viewIso').addEventListener('click',viewIso);
+  $('iceView').addEventListener('change',()=>{if(current())updateMesh(current());});
   $('csv').addEventListener('click',downloadCsv);
   $('png').addEventListener('click',downloadPng);
   $('speed').addEventListener('change',()=>accumulator=0);
