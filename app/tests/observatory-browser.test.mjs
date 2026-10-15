@@ -85,7 +85,7 @@ try{
   await page.locator('#habit').selectOption('plate');
   await page.locator('#preset').click();
   assert.equal(await page.locator('#gridSize').inputValue(),'97');
-  assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),600);
+  assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),1024);
   assert.equal(await page.locator('#topology').inputValue(),'triangular');
   assert.equal(Number(await page.locator('#basalA').inputValue()),.009);
   assert.match(await page.locator('#domainStatus').innerText(),/VALIDITY|CAUTION/);
