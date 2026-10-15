@@ -523,10 +523,10 @@ function radialSeries(s){
     for(let k=0;k<points;k++){
       const r=maxR*k/(points-1),i=clamp(Math.round(center+r*Math.cos(theta)/s.dx),0,s.n-1);
       const j=clamp(Math.round(center+r*Math.sin(theta)/s.dx),0,s.n-1);
-      const k=s.topology==='triangular'?
+      const sampleIndex=s.topology==='triangular'?
         hexCellAtXY({N:s.n,R:center,dx:s.dx,mask:s.mask},
           r*Math.cos(theta),r*Math.sin(theta)):j*s.n+i;
-      if(k>=0)out.push([um(r),100*s.u[k]]);
+      if(sampleIndex>=0)out.push([um(r),100*s.u[sampleIndex]]);
     }
     radials.push({color:palette[arm],points:out,width:1.55});
   }
