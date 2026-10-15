@@ -57,27 +57,43 @@ function run(amplitude,phase,epsilon=0,steps=36){
     resolvedHexGrowthStep(state,.5,{vaporIterations:24,heatIterations:30});
   }
   const morph=hexGrowthMorphology(state,720);
-  // Compare central physical ray with its ±10° flank, for all six directions,
-  // over an intermediate radius range. Negative is a possible split signature,
-  // not proof of which physical mechanism caused it.
-  let center=0,flanks=0,ns=0;
-  const end=Math.min(morph.equivalentBasalRadius*2.2,(state.R-12)*dx);
-  for(let arm=0;arm<6;arm++){
-    const th=arm*Math.PI/3;
-    for(let radius=2.5e-6;radius<=end;radius+=dx){
-      const at=d=>sampleHexLinear(state,state.phi,radius*Math.cos(th+d),
-        radius*Math.sin(th+d));
-      const u=at(0),l=at(-Math.PI/18),r=at(Math.PI/18);
-      if([u,l,r].every(Number.isFinite)){center+=u;flanks+=(l+r)/2;ns++;}
+  // Distinguish the fixed-grid X direction from the actual orientation of
+  // the *grown* sixfold morphology. Otherwise a 30° rotated intact arm
+  // would be falsely scored as a split arm on the original axis.
+  function spineScore(angularOrigin,outerOnly=false){
+    let center=0,flanks=0,count=0;
+    const limit=Math.min(morph.equivalentBasalRadius*2.2,(state.R-12)*dx);
+    for(let arm=0;arm<6;arm++){
+      const th=angularOrigin+arm*Math.PI/3;
+      const armBin=((Math.round(((th%(2*Math.PI)+2*Math.PI)%(2*Math.PI))/
+        (2*Math.PI)*morph.radius.length))%morph.radius.length);
+      const armExtent=morph.radius[armBin];
+      const end=outerOnly?Math.min(limit,armExtent*.95):limit;
+      const start=outerOnly?Math.max(2.5e-6,armExtent*.55):2.5e-6;
+      for(let radius=start;radius<=end;radius+=dx){
+        const at=d=>sampleHexLinear(state,state.phi,radius*Math.cos(th+d),
+          radius*Math.sin(th+d));
+        const centerVal=at(0),left=at(-Math.PI/18),right=at(Math.PI/18);
+        if([centerVal,left,right].every(Number.isFinite)){
+          center+=centerVal;flanks+=(left+right)/2;count++;
+        }
+      }
     }
+    return count?(center-flanks)/count:NaN;
   }
-  assert.ok(ns>0,'center/spine versus lateral flanks must be measurable');
+  const fixedSpineScore=spineScore(0);
+  const alignedSpineScore=spineScore(morph.m6Phase);
+  const outerAlignedSpineScore=spineScore(morph.m6Phase,true);
+  assert.ok([fixedSpineScore,alignedSpineScore,outerAlignedSpineScore]
+    .every(Number.isFinite),'spine/flank measurements require valid radial support');
   return {state,morph,diagnostics:{
     phase,anisotropy:amplitude,epsilon,time_s:state.t,
     mass_pg:state.totalDepositedMass*1e12,
     m6:morph.modes[6].relative,m4:morph.modes[4].relative,
     phase_m6_deg:morph.m6Phase*180/Math.PI,
-    centerMinusFlanks:(center-flanks)/ns,
+    fixedAxisCenterMinusFlanks:fixedSpineScore,
+    alignedCenterMinusFlanks:alignedSpineScore,
+    outerAlignedCenterMinusFlanks:outerAlignedSpineScore,
     halo_cells:auditHexDomain(state).haloCells
   }};
 }
@@ -92,9 +108,11 @@ assert.ok(p30.state.totalDepositedMass>0);
 assert.ok(p0.state.lastBudget.interfaceCells>0);
 assert.ok(p0.state.phi.some((v,k)=>v!==p30.state.phi[k]),
   'changing kinetic phase must actually change phase-field growth');
-assert.ok(Math.abs(p0.diagnostics.centerMinusFlanks-
-  p30.diagnostics.centerMinusFlanks)>1e-7,
-  'phase-sweep spine score should respond to the tested kinetic orientation');
+assert.ok(Math.abs(p0.diagnostics.fixedAxisCenterMinusFlanks-
+  p30.diagnostics.fixedAxisCenterMinusFlanks)>1e-7,
+  'fixed reference axes should reveal changed orientation');
+assert.ok(Math.abs(p30.diagnostics.phase_m6_deg)>20,
+  '30° kinetic phase should rotate the measured m6 direction in this test');
 const surf0=run(.50,0,0,20),surf1=run(.50,0,.02,20);
 assert.ok(surf0.state.phi.some((v,k)=>v!==surf1.state.phi[k]),
   'positive surface-energy anisotropy must modify the interface, not only UI');
