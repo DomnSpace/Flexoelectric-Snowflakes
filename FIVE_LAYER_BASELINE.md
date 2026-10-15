@@ -1,6 +1,6 @@
 # Step 1 / 15 — frozen pre-coupling numerical reference
 
-**Status:** reference created from actual successful CI measurement; committed fixture, assertions and browser validation pending final latest CI check.  
+**Status:** Step 1 baseline captured and verified: full physics suite and Chromium browser smoke passed on PR run [38733133826](https://github.com/DomnSpace/Flexoelectric-Snowflakes/actions/runs/38733133826). No production solver or viewer source changed.  
 **Frozen commit (deployed working Pass 7):** [77f118c091a2fd1ae278c899e7d5f6a1715ebc54](https://github.com/DomnSpace/Flexoelectric-Snowflakes/commit/77f118c091a2fd1ae278c899e7d5f6a1715ebc54)  
 **Frozen reference branch:** [baseline/five-layer-pre-coupling-20261015](https://github.com/DomnSpace/Flexoelectric-Snowflakes/tree/baseline/five-layer-pre-coupling-20261015)  
 **Development branch:** `feat/five-layer-coupling-foundation-v1`  
