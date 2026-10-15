@@ -45,6 +45,10 @@ The fixed 0.5-second model step and bounded 360-frame history make replay determ
 The source-level contract test verifies expected DOM bindings, real solver imports, and numerical snapshot fields. The existing numerical suite covers physical modules. Browser-level WebGL rendering and CDN retrieval still require verification on a modern Chromium browser. GitHub Actions runs syntax and Node tests on the feature branch and pull requests.
 
 
+## Five-layer competition — step 2/15 conservative gas finite volumes
+
+[FIVE_LAYER_STEP2_FV.md](FIVE_LAYER_STEP2_FV.md) describes the opt-in numerical pilot on triangular 2D × vertical gas slabs with **one shared vapor mass inventory**, genuine lateral/vertical diffusion and attachment sinks on exposed ice faces. Five ice-eligible layers plus gas-only upper/lower halos are independently inventoried, but their fixed geometry does not yet move. Positive flux limiting, sealed/open boundary mass conservation and interface latent-heat **bookkeeping** are tested. The old 2.5-D snowflake solver and existing five-layer optical preview remain unchanged. The explicit time-step restriction is extremely short at micron spacing; this is a validation kernel, **not yet an interactive 300 µm model**.
+
 ## Five-layer competition roadmap — baseline step 1/15
 
 [FIVE_LAYER_RESEARCH_DECISION.md](FIVE_LAYER_RESEARCH_DECISION.md) records the evidence and provisional choice of **five ice-eligible layers sharing a vertically resolved finite-volume vapor/heat environment**, with separate gas halo slabs. Crucially, it does **not** prescribe fastest central-layer growth: all exposure and attachment preferences must emerge from computed flux and kinetics. It treats this as a coarse 3D transport discretization, not solved molecular ice or an already calibrated five-layer model.
