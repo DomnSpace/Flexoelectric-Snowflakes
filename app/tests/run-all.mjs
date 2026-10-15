@@ -12,6 +12,7 @@ const tests = [
   './growth25d.test.mjs',
   './habit-domain.test.mjs',
   './hex25d.test.mjs',
+  './anisotropy-phase.test.mjs',
   './electric25d.test.mjs',
   './fieldlines.test.mjs',
 ];
