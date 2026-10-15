@@ -26,7 +26,7 @@ const pg = x => x * 1e12;
 const STEPTIME = 0.5;
 const BASE_STEPS_PER_SECOND = 3;
 const MAX_SNAPSHOTS = 360;
-const MAX_STORED_GRID_CELLS=360*73*73; // bounded replay on larger grids
+const MAX_STORED_GRID_CELLS=360*73*73; // cap snapshot memory on 401² grids
 const DX=0.75e-6;
 const ids = ['temp','sigma','pressure','anisotropy','prism','basalA','seed','gridSize','sdak','capillarity','electricEnabled','electricCouple','eField','eAngle','epsIce','bendGradient','bendAngle','muFlexo'];
 const labels = [
@@ -96,7 +96,9 @@ function setPending(v) {
   pending=v; $('pending').hidden=!v;
 }
 function snap() {
-  const m=isHex()?hexGrowthMorphology(state,180):growthMorphology(state,180);
+  // 720 phase-derived radial samples resolve contour angles without making
+  // the 0.75 µm numerical solver falsely appear atomically resolved.
+  const m=isHex()?hexGrowthMorphology(state,720):growthMorphology(state,180);
   return {
     t:state.t, n:state.N, dx:state.dx, Tinf:state.Tinf,
     topology:state.topology||'square',mask:isHex()?new Uint8Array(state.mask):null,
@@ -122,7 +124,7 @@ function snap() {
 function current() {return frames[clamp(selectedIndex,0,frames.length-1)];}
 function capture() {
   frames.push(snap());
-  const historyLimit=Math.max(40,Math.min(MAX_SNAPSHOTS,Math.floor(MAX_STORED_GRID_CELLS/(state.N*state.N))));
+  const historyLimit=Math.max(8,Math.min(MAX_SNAPSHOTS,Math.floor(MAX_STORED_GRID_CELLS/(state.N*state.N))));
   if(frames.length>historyLimit)frames.shift();
   selectedIndex=frames.length-1;
   $('scrub').max=String(frames.length-1);
@@ -136,7 +138,10 @@ function reset(start=true) {
       if(next.electric.enabled||next.electric.coupleGrowth)
         throw new Error('Hexagonal experimental mesh does not support the electric Poisson model yet. Switch to Cartesian.');
       state=makeHexGrowthState(next);
-    }else state=makeGrowth25DState(next);
+    }else{
+      if(next.N>161)throw new Error('Cartesian A/B solver is limited to 120 µm; choose triangular for 300 µm.');
+      state=makeGrowth25DState(next);
+    }
     frames=[];replay=false;playing=start;accumulator=0;
     $('errorOverlay').hidden=true;
     setPending(false);
@@ -623,11 +628,16 @@ function topologyControls(){
     if(hex)$(name).checked=false;
     $(name).disabled=hex;
   }
+  for(const opt of $('gridSize').options){
+    opt.disabled=!hex&&Number(opt.value)>161;
+  }
+  if(!hex&&Number($('gridSize').value)>161)$('gridSize').value='161';
   for(const opt of $('field').options){
     if(['electric','potential'].includes(opt.value))opt.disabled=hex;
   }
   if(hex&&['electric','potential'].includes($('field').value))$('field').value='vapor';
   $('topologyValue').textContent=hex?'6-neighbor triangular':'9-point Cartesian';
+  formatControls();
 }
 function setupEvents(){
   formatControls();
@@ -635,6 +645,10 @@ function setupEvents(){
   topologyControls();
   $('topology').addEventListener('change',()=>{
     activeHabit='custom';topologyControls();setPending(true);
+  });
+  $('fieldResolution').addEventListener('change',()=>{
+    $('fieldResolutionValue').textContent=$('fieldResolution').value+' px';
+    if(current())drawField(current());
   });
   for(const [id] of labels)$(id).addEventListener('input',()=>{
     activeHabit='custom';formatControls();setPending(true);
