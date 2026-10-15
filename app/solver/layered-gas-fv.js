@@ -56,8 +56,12 @@ export function createLayeredGasFV({
   nonnegative(basalAttachmentMPerS,'basal attachment rate');
   const D=diffusivityM2s??diffusivityWaterVaporAir(Tinf,pressurePa);
   positive(D,'vapor diffusivity');
-  const ceq=surfaceEquilibriumKgM3??saturationMassDensityIce(Tinf);
-  const c0=initialVaporKgM3??ceq*(1+sigmaInf);
+  const atmosphericIceSaturation=saturationMassDensityIce(Tinf);
+  const ceq=surfaceEquilibriumKgM3??atmosphericIceSaturation;
+  // A changed local attachment equilibrium does NOT change the far-field
+  // gas inventory. It is an interface boundary condition, not the cloud
+  // source concentration or a hidden overwrite of initial vapor mass.
+  const c0=initialVaporKgM3??atmosphericIceSaturation*(1+sigmaInf);
   nonnegative(ceq,'surface equilibrium concentration');
   nonnegative(c0,'initial gas concentration');
   const bc={
