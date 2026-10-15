@@ -27,7 +27,7 @@ export const GROWTH_HABITS=Object.freeze({
   }),
   dendrite:Object.freeze({
     name:'Stellar dendrite candidate',category:'plate',supported:true,
-    temperatureC:-15,sigmaPercent:18,pressureKPa:101,
+    temperatureC:-15,sigmaPercent:14,pressureKPa:101,
     anisotropy6:.50,prismSigma0:.0035,basalSigma0:.01,basalA:.004,
     seedRadiusUm:1.5,gridN:129,sdak:true,capillarity:true,
     expectation:'Near −15 °C and high supersaturation, stellar dendrites occur in nature. This solver must demonstrate branching rather than assume it.',
@@ -51,7 +51,7 @@ export function modelDomainUm(N,dx){return (N-1)*dx*1e6;}
  * while the same total area has a tiny equivalent radius.
  * Also report plate aspect validity of the shared-height 2.5-D closure.
  */
-export function auditGrowthDomain(state,{warningCells=12,stopCells=6,plateRatioWarning=.50}={}){
+export function auditGrowthDomain(state,{warningCells=12,stopCells=6,plateRatioWarning=.65,plateRatioStop=1.25}={}){
   const N=state.N,dx=state.dx,center=(N-1)/2;
   let minHalo=(N-1)/2,maxRadius=0,occupied=0;
   for(let j=0;j<N;j++)for(let i=0;i<N;i++){
@@ -66,15 +66,18 @@ export function auditGrowthDomain(state,{warningCells=12,stopCells=6,plateRatioW
   const haloUm=minHalo*dx*1e6;
   const domainUm=modelDomainUm(N,dx);
   const warn=minHalo<=warningCells;
-  const stop=minHalo<=stopCells;
+  const stopHalo=minHalo<=stopCells;
   // This is a warning, NOT a physical crystal exclusion condition:
   // a thick crystal may exist but violates the uniform-thickness plate model.
   const plateWarning=plateRatio>plateRatioWarning;
+  const plateStop=plateRatio>plateRatioStop&&state.t>5;
+  const stop=stopHalo||plateStop;
   return {
     N,dx,domainUm,occupied,haloCells:minHalo,haloUm,
     tipRadiusUm:maxRadius*1e6,thicknessUm:thickness*1e6,
-    plateRatio,warning:warn,stop,plateWarning,
-    reason:stop?'RESOLVED CRYSTAL TOO CLOSE TO SQUARE DIRICHLET BOUNDARY':
+    plateRatio,warning:warn||plateWarning,stop,plateWarning,plateStop,stopHalo,
+    reason:stopHalo?'RESOLVED CRYSTAL TOO CLOSE TO SQUARE DIRICHLET BOUNDARY':
+      plateStop?'SHARED-THICKNESS PLATE MODEL INVALID: EXCESSIVE VERTICAL GROWTH':
       warn?'SQUARE DIRICHLET BOUNDARY MAY BIAS MORPHOLOGY':
       plateWarning?'SHARED-THICKNESS PLATE APPROXIMATION STRETCHED':
       'WITHIN DEMONSTRATOR VALIDITY BOUNDS'
