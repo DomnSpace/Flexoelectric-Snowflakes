@@ -114,7 +114,8 @@ close(layeredTrackedWaterKg(compete),preCompete,1e-26,4e-12);
 const limitCase=createLayeredGasFV({...base,
   iceCells:[{q:0,r:0,z:3},{q:0,r:0,z:5}],
   basalAttachmentMPerS:1e9,prismAttachmentMPerS:0,
-  surfaceEquilibriumKgM3:0});
+  surfaceEquilibriumKgM3:0,
+  initialVaporKgM3:saturationMassDensityIce(258.15)*1.1});
 const cCopy=limitCase.c.slice(),beforeLimited=layeredTrackedWaterKg(limitCase);
 assert.throws(()=>stepLayeredGasFV(limitCase,1e-7),/explicitly stable/);
 assert.deepEqual(limitCase.c,cCopy,'refused step must not alter any physical state');
