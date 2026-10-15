@@ -6,6 +6,8 @@ import {
 } from './solver/growth25d.js';
 import {GROWTH_HABITS, GRID_CHOICES, auditGrowthDomain, modelDomainUm} from './solver/habits25d.js';
 import {saturationVaporPressureWaterMK, saturationVaporPressureIceMK} from './solver/thermo.js';
+import {makeHexGrowthState,resolvedHexGrowthStep,hexGrowthMorphology,
+  auditHexDomain,enlargeHexDomain,hexCellAtXY} from './solver/hex25d.js';
 
 /*
  * Snowflake Observatory
@@ -46,6 +48,8 @@ const labels = [
 const palette = ['#8de0ff','#b7a9ff','#f9cb8b','#72d8b7','#ff9da5','#e8efff'];
 let state, frames=[], selectedIndex=0, replay=false, playing=true, pending=false;
 let activeHabit='custom';
+const isHex=()=>state?.topology==='triangular';
+const auditState=()=>isHex()?auditHexDomain(state):auditGrowthDomain(state);
 let lastFrame=performance.now(), accumulator=0, mesh=null, edge=null, worldScale=1;
 let scene, camera, controls, renderer, crystal, snowLight;
 let drawCanvas;
@@ -92,9 +96,11 @@ function setPending(v) {
   pending=v; $('pending').hidden=!v;
 }
 function snap() {
-  const m=growthMorphology(state,180);
+  const m=isHex()?hexGrowthMorphology(state,180):growthMorphology(state,180);
   return {
     t:state.t, n:state.N, dx:state.dx, Tinf:state.Tinf,
+    topology:state.topology||'square',mask:isHex()?new Uint8Array(state.mask):null,
+    expansions:state.domainExpansions||0,
     u:new Float32Array(state.sigma), dT:new Float32Array(state.dT),
     phi:new Float32Array(state.phi), ice:new Uint8Array(state.ice),
     ePotential:state.electric?new Float32Array(state.electric.potential):null,
@@ -108,7 +114,7 @@ function snap() {
       modes:{4:{...m.modes[4]},6:{...m.modes[6]},12:{...m.modes[12]}}
     },
     budget:state.lastBudget?{...state.lastBudget}:null,
-    audit:auditGrowthDomain(state),habit:activeHabit,
+    audit:auditState(),habit:activeHabit,
     waterSaturationPercent:cloudSaturationSigma(state.Tinf-273.15)*100,
     deposited:state.totalDepositedMass, energy:state.totalLatentHeat
   };
@@ -126,7 +132,11 @@ function reset(start=true) {
   try {
     const next=config();
     if(!GRID_CHOICES.includes(next.N))throw new RangeError('Grid size is not an approved resolution');
-    state=makeGrowth25DState(next);
+    if($('topology').value==='triangular'){
+      if(next.electric.enabled||next.electric.coupleGrowth)
+        throw new Error('Hexagonal experimental mesh does not support the electric Poisson model yet. Switch to Cartesian.');
+      state=makeHexGrowthState(next);
+    }else state=makeGrowth25DState(next);
     frames=[];replay=false;playing=start;accumulator=0;
     $('errorOverlay').hidden=true;
     setPending(false);
@@ -134,7 +144,8 @@ function reset(start=true) {
     const selected=GROWTH_HABITS[activeHabit];
     $('scenario').textContent=(selected?.supported?selected.name.toUpperCase():'CUSTOM EXPERIMENT')+
       ' · '+num(Number($('temp').value),0)+' °C / '+num(Number($('sigma').value),1)+' %';
-    $('electricReadout').textContent=state.electric?(state.electric.params.coupleGrowth?'POISSON + DIELECTRIC GROWTH':'POISSON / DIAGNOSTIC ONLY'):'DISABLED';
+    $('electricReadout').textContent=isHex()?'NOT COUPLED TO TRIANGULAR MESH':
+      state.electric?(state.electric.params.coupleGrowth?'POISSON + DIELECTRIC GROWTH':'POISSON / DIAGNOSTIC ONLY'):'DISABLED';
     $('play').textContent=start?'❚❚ Pause':'▶ Play';
     $('live').classList.add('active');
   } catch(e) { fail(e); }
@@ -148,15 +159,27 @@ function fail(e) {
 }
 function advance() {
   if(!state)return;
-  const audit=auditGrowthDomain(state);
-  if(audit.stop){
+  try{
+    // Preserve the grown ice, time, vapor fields and cumulative budgets when
+    // expanding the experimental hex mesh (no restart or fake second seed).
+    if(isHex()&&$('autoExpand').checked){
+      const options=GRID_CHOICES, index=options.indexOf(state.N);
+      if(index>=0&&index<options.length-1&&auditHexDomain(state).haloCells<=12){
+        state=enlargeHexDomain(state,options[index+1]);
+        $('gridSize').value=String(state.N);
+        formatControls();
+        $('fieldInspect').textContent='HEX DOMAIN GROWN · '+state.domainExpansions+' EXPANSIONS';
+      }
+    }
+    const audit=auditState();
+    if(audit.stop){
     playing=false;$('play').textContent='▶ Play';
     setStatus('MODEL DOMAIN STOP · '+audit.reason);
     return;
-  }
-  try{
-    // No fabricated growth between steps: each snapshot follows a real solver step.
-    resolvedGrowthStep(state,STEPTIME,{vaporIterations:45,heatIterations:55});
+    }
+    // Each model frame advances exactly one resolved transport + deposition step.
+    if(isHex())resolvedHexGrowthStep(state,STEPTIME,{vaporIterations:45,heatIterations:55});
+    else resolvedGrowthStep(state,STEPTIME,{vaporIterations:45,heatIterations:55});
     capture();sync();
     const d=current().audit;
     if(d.stop){
@@ -168,7 +191,7 @@ function advance() {
   } catch(e) {fail(e);}
 }
 function play() {
-  if(state&&auditGrowthDomain(state).stop){
+  if(state&&auditState().stop&&!(isHex()&&$('autoExpand').checked&&GRID_CHOICES.indexOf(state.N)<GRID_CHOICES.length-1)){
     playing=false;setStatus('MODEL DOMAIN STOP · CHANGE DOMAIN OR PARAMETERS AND RESTART');return;
   }
   if(replay){replay=false;selectedIndex=frames.length-1;$('scrub').value=String(selectedIndex);}
@@ -188,7 +211,12 @@ function sync() {
   $('sizeLabel').textContent=num((s.n-1)*s.dx*1e6,1)+' µm DOMAIN · '+s.n+'²';
   $('stepLabel').textContent='STEP '+String(Math.round(s.t/STEPTIME)).padStart(4,'0');
   $('scrubTime').textContent='t = '+num(s.t,1)+' s';
-  $('gridDim').textContent=s.n+'×'+s.n;
+  $('gridDim').textContent=s.topology==='triangular'
+    ?Math.round(1+3*((s.n-1)/2)*((s.n+1)/2))+' HEX CELLS':s.n+'×'+s.n;
+  $('fieldGeometry').textContent=s.topology==='triangular'
+    ?'TRIANGULAR TRANSPORT / HEX VORONOI · FINITE HEX BOUNDARY SELECTS m6':
+    'SQUARE DIRICHLET FAR-FIELD · ARTIFACTS NEAR EDGES';
+  $('topologyValue').textContent=s.topology==='triangular'?'6-neighbor triangular':'9-point Cartesian';
   $('live').classList.toggle('active',!replay);
   updateBudget(s);
   updateDomain(s);
@@ -202,7 +230,7 @@ function updateDomain(s) {
   $('domainStatus').textContent=label;
   $('domainDetails').textContent='TIP '+num(d.tipRadiusUm,1)+' µm · HALO '+num(d.haloUm,1)+
     ' µm ('+d.haloCells+' cells) · THICKNESS '+num(d.thicknessUm,1)+
-    ' µm · h/r '+num(d.plateRatio,2)+' · '+d.reason;
+    ' µm · h/r '+num(d.plateRatio,2)+' · '+d.reason+(s.topology==='triangular'?' · EXTENSIONS '+s.expansions:'');
   $('domainReport').classList.toggle('domain-stop',d.stop);
   $('domainReport').classList.toggle('domain-warning',d.warning&&!d.stop);
   $('validity').textContent=d.stop?'STOP · INVALID':d.warning?'WARNING':'MONITORING';
@@ -333,7 +361,8 @@ function updateMesh(s) {
   const maxRadius=Math.max(3.2,um(s.morph.equivalentBasalRadius)*1.5);
   worldScale=2.5/maxRadius;
   crystal.scale.setScalar(worldScale);
-  $('viewLabel').textContent='2.5-D UNIFORM-THICKNESS EXTRUSION · '+num(depth,2)+' µm';
+  $('viewLabel').textContent=(s.topology==='triangular'?'TRIANGULAR-LATTICE · ':'')+
+    '2.5-D EXTRUSION · '+num(depth,2)+' µm';
 }
 
 function fieldColor(t,ice=false) {
