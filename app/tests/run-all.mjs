@@ -11,6 +11,7 @@ const tests = [
   './postseed.test.mjs',
   './growth25d.test.mjs',
   './habit-domain.test.mjs',
+  './hex25d.test.mjs',
   './electric25d.test.mjs',
   './fieldlines.test.mjs',
 ];
