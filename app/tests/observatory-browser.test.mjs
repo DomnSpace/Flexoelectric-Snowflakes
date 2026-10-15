@@ -63,8 +63,8 @@ try{
   await page.locator('#preset').click();
   assert.equal(await page.locator('#topology').inputValue(),'triangular');
   assert.equal(await page.locator('#gridSize').inputValue(),'129');
-  assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),600,
-    'hex field draws actual Voronoi cells, not an N×N square raster');
+  assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),1024,
+    'triangular field uses display-only 1024-pixel interpolation, not solver-cell raster');
   assert.match(await page.locator('#fieldGeometry').innerText(),/TRIANGULAR TRANSPORT/);
   assert.match(await page.locator('#gridDim').innerText(),/HEX CELLS/);
   assert.equal(await page.locator('#electricEnabled').isDisabled(),true,
@@ -98,10 +98,34 @@ try{
   await page.locator('#topology').selectOption('triangular');
   await page.locator('#apply').click();
   assert.equal(await page.locator('#errorOverlay').isVisible(),false);
+  // Independent high-definition raster: changes display pixels, never
+  // solver grid or elapsed model time.
+  await page.locator('#fieldResolution').selectOption('1536');
+  assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),1536);
+  assert.match(await page.locator('#fieldFidelity').innerText(),/PIECEWISE-LINEAR/);
+  await page.locator('#fieldResolution').selectOption('1024');
+  // Full physical 300 µm hex-domain run at the existing 0.75 µm spacing.
+  await page.locator('#gridSize').selectOption('401');
+  await page.locator('#apply').click();
+  assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),1024);
+  assert.match(await page.locator('#gridDim').innerText(),/120601 HEX CELLS/);
+  assert.match(await page.locator('#sizeLabel').innerText(),/300\.0 µm DOMAIN/);
+  await page.locator('#play').click();
+  const largeBefore=parseFloat(await page.locator('#kTime').innerText());
+  const largeWallStart=Date.now();
+  await page.locator('#step').click({timeout:60000});
+  const largeStepMs=Date.now()-largeWallStart;
+  assert.ok(parseFloat(await page.locator('#kTime').innerText())>largeBefore,
+    '300 µm simulation must advance physics rather than simply display a larger frame');
+  assert.ok(largeStepMs<50000,'401-node physical step stays interactive within smoke budget');
+  assert.equal(await page.locator('#errorOverlay').isVisible(),false,
+    '401-node hex simulation must not fail');
+  const maxReplay=Number(await page.locator('#scrub').getAttribute('max'));
+  assert.ok(maxReplay<=20,'large-grid replay remains memory bounded');
   await mkdir(resolve('artifacts'),{recursive:true});
   await page.screenshot({path:'artifacts/snowflake-observatory.png',fullPage:true,animations:'disabled'});
   assert.deepEqual(errors,[],'no browser script/console errors');
-  console.log('observatory-browser.test.mjs PASS',{t0,t1,download:download.suggestedFilename()});
+  console.log('observatory-browser.test.mjs PASS',{t0,t1,largeStepMs,download:download.suggestedFilename()});
 }finally{
   await browser.close();
 }
