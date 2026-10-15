@@ -15,7 +15,9 @@ try{
   page.on('console',msg=>{if(msg.type()==='error')errors.push(msg.text());});
   await page.goto('http://127.0.0.1:8088/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>document.querySelector('#status')?.textContent!=='INITIALIZING PHYSICS',{timeout:45000});
-  assert.equal(await page.locator('#errorOverlay').isVisible(),false,'3D/solver error overlay must be hidden');
+  assert.equal(await page.locator('#errorOverlay').isVisible(),false,
+    '3D/solver error overlay must be hidden: '+await page.locator('#errorOverlay').innerText()+
+    ' / console: '+errors.join(' | '));
   assert.match(await page.locator('#status').innerText(),/SOLVER RUNNING/);
   assert.equal(await page.locator('#viewport canvas').count(),1,'WebGL canvas mounted');
   assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),73,'numeric field raster');
