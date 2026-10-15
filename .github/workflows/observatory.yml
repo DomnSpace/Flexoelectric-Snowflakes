@@ -22,6 +22,8 @@ jobs:
         run: node app/tests/observatory-contract.test.mjs
       - name: Run physics regression suite
         run: node app/tests/run-all.mjs
+      - name: Capture legacy baseline numerical fingerprint
+        run: node app/tests/legacy-baseline-capture.mjs
   browser-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 12
