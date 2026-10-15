@@ -24,6 +24,7 @@ import {DEFAULT_ICE_KINETICS,capillaryLengthIceVapor} from './growth25d.js';
 const PI=Math.PI,RT3=Math.sqrt(3),SQRT3_OVER_2=RT3/2;
 const DIR=Object.freeze([[1,0],[-1,0],[0,1],[0,-1],[1,-1],[-1,1]]);
 const VECT=DIR.map(([q,r])=>[q+r/2,SQRT3_OVER_2*r]);
+const makeOffsets=N=>[1,-1,N,-N,1-N,N-1];
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const id=(i,j,N)=>j*N+i;
 const valid=(i,j,N)=>i>=0&&j>=0&&i<N&&j<N;
@@ -59,7 +60,15 @@ export function makeHexGrowthState({
     const {x,y}=axialToXY(q,r,dx);
     if(Math.hypot(x,y)<=seedRadius){ice[k]=1;phi[k]=1;sigma[k]=0;}
   }
+  // All interior cells have six equidistant neighbors; cache their indices,
+  // avoiding 6× dynamic callbacks per Jacobi sweep on 401² grids.
+  const interior=[],edges=[];
+  for(let j=0;j<N;j++)for(let i=0;i<N;i++){
+    const k=id(i,j,N);if(!mask[k])continue;
+    if(axialRadius(i-R,j-R)===R)edges.push(k);else interior.push(k);
+  }
   return {topology:'triangular',N,dx,R,mask,activeSites,
+    interior:Uint32Array.from(interior),edges:Uint32Array.from(edges),
     ice,phi,sigma,dT,heatSource,Tinf,sigmaInf,pressurePa,
     basalHalfThickness,kinetics:JSON.parse(JSON.stringify(kinetics)),
     t:0,totalDepositedMass:0,totalLatentHeat:0,lastBudget:null,
@@ -120,26 +129,35 @@ export function hexIsInterface(state,i,j){
   return found;
 }
 
+/**
+ * Accelerated Jacobi transport on a hex domain. Only the regular interior
+ * enters the stencil; invalid corner cells are never used, and outer-shell
+ * Dirichlet values remain fixed in BOTH ping-pong buffers. Same six-neighbor
+ * equation as the original loop, but avoids allocating closures per site.
+ */
 export function relaxHexScalar(state,field='sigma',iterations=40){
   const isVapor=field==='sigma';
   if(!isVapor&&field!=='dT')throw new Error('Unknown hex transport scalar');
-  const {N,dx,Tinf,sigmaInf,mask,ice,heatSource}=state;
+  const {N,dx,Tinf,sigmaInf,ice,heatSource,interior,edges}=state;
+  const source=isVapor?0:dx*dx/(4*thermalConductivityAir(Tinf));
   const cref=isVapor?saturationMassDensityIce(Tinf):0;
-  const kAir=isVapor?0:thermalConductivityAir(Tinf);
-  let a=new Float64Array(state[field]),b=new Float64Array(a.length);
+  let a=new Float64Array(state[field]),b=new Float64Array(a);
+  const boundary=isVapor?sigmaInf:0;
+  for(let n=0;n<edges.length;n++){
+    const k=edges[n];a[k]=boundary;b[k]=boundary;
+  }
+  const offsets=makeOffsets(N);
   for(let iter=0;iter<iterations;iter++){
-    for(let j=0;j<N;j++)for(let i=0;i<N;i++){
-      const k=id(i,j,N);
-      if(!mask[k]){b[k]=isVapor?sigmaInf:0;continue;}
-      if(atBoundary(state,i,j)){b[k]=isVapor?sigmaInf:0;continue;}
+    for(let x=0;x<interior.length;x++){
+      const k=interior[x];
       if(isVapor&&ice[k]){
-        b[k]=saturationMassDensityIce(Tinf+state.dT[k])/cref-1;continue;
+        b[k]=saturationMassDensityIce(Tinf+state.dT[k])/cref-1;
+        continue;
       }
-      let sum=0,n=0;
-      forNeighbor(state,i,j,k2=>{sum+=a[k2];n++;});
-      // All interior sites of the regular hex domain have six neighbors.
-      if(n!==6)throw new Error('Broken six-neighbor hex interior at '+i+','+j);
-      b[k]=sum/6+(isVapor?0:heatSource[k]*dx*dx/(4*kAir));
+      b[k]=(a[k+offsets[0]]+a[k+offsets[1]]+
+            a[k+offsets[2]]+a[k+offsets[3]]+
+            a[k+offsets[4]]+a[k+offsets[5]])/6+
+            (isVapor?0:heatSource[k]*source);
     }
     const temp=a;a=b;b=temp;
   }
@@ -222,16 +240,49 @@ export function resolvedHexGrowthStep(state,dt,{vaporIterations=45,heatIteration
   return state;
 }
 
+/**
+ * Continuous piecewise-linear interpolation on the actual equilateral
+ * triangular grid. No new degrees of freedom: values are interpolated from
+ * the three surrounding solver sites. Used for field display and iso-contour
+ * extraction only, never fed back into the physical step.
+ */
+export function sampleHexLinear(state,values,x,y){
+  const a=state.dx,RF=2*y/(a*RT3),QF=x/a-RF/2;
+  const q=Math.floor(QF),r=Math.floor(RF),u=QF-q,v=RF-r;
+  let c0,c1,c2,w0,w1,w2;
+  if(u+v<=1){
+    c0=[q,r];c1=[q+1,r];c2=[q,r+1];
+    w0=1-u-v;w1=u;w2=v;
+  }else{
+    c0=[q+1,r+1];c1=[q,r+1];c2=[q+1,r];
+    w0=u+v-1;w1=1-u;w2=1-v;
+  }
+  const R=state.R,N=state.N,mask=state.mask;
+  const i0=c0[0]+R,j0=c0[1]+R,i1=c1[0]+R,j1=c1[1]+R,i2=c2[0]+R,j2=c2[1]+R;
+  if(i0<0||i1<0||i2<0||j0<0||j1<0||j2<0||
+    i0>=N||i1>=N||i2>=N||j0>=N||j1>=N||j2>=N)return NaN;
+  const k0=j0*N+i0,k1=j1*N+i1,k2=j2*N+i2;
+  if(!mask[k0]||!mask[k1]||!mask[k2])return NaN;
+  return w0*values[k0]+w1*values[k1]+w2*values[k2];
+}
+
 export function hexGrowthMorphology(state,rays=180){
-  const radii=[],maxR=state.R*state.dx,step=state.dx*.3;
+  const radii=[],maxR=state.R*state.dx,step=state.dx*.45;
   let area=0;
   for(let k=0;k<state.mask.length;k++)if(state.mask[k])area+=occupied(state,k);
   for(let q=0;q<rays;q++){
     const theta=2*PI*q/rays;let radius=0;
+    const ct=Math.cos(theta),st=Math.sin(theta);
+    let prev=1,lastR=0;
     for(let r=0;r<=maxR;r+=step){
-      const k=hexCellAtXY(state,r*Math.cos(theta),r*Math.sin(theta));
-      if(k<0)break;
-      if(occupied(state,k)>.15)radius=r;
+      const val=sampleHexLinear(state,state.phi,r*ct,r*st);
+      if(!Number.isFinite(val))break;
+      if(val>=.15)radius=r;
+      else if(prev>=.15&&r>0){
+        const frac=clamp((prev-.15)/(prev-val),0,1);
+        radius=lastR+(r-lastR)*frac;
+      }
+      prev=val;lastR=r;
     }
     radii.push(radius);
   }
