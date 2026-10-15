@@ -41,7 +41,13 @@
           <button id="play" class="primary" type="button">❚❚ Pause</button>
           <button id="step" type="button">→ Step</button>
           <button id="reset" type="button">↺ Reset</button>
-          <button id="preset" type="button" title="Loads a dendritic morphology exploration preset">✳ Dendritic preset</button>
+          <label class="speed habit-picker">HABIT <select id="habit">
+              <option value="plate">−15 °C · Simple plate</option>
+              <option value="sector">−15 °C · Sectored candidate</option>
+              <option value="dendrite" selected>−15 °C · Stellar candidate</option>
+              <option value="needle">−5 °C · Needle (3-D required)</option>
+            </select></label>
+            <button id="preset" type="button" title="Loads a literature-inspired scenario and explicitly uncalibrated kinetic parameters">✳ Load scenario</button>
           <label class="speed">SPEED <select id="speed"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select></label>
           <span class="grow"></span><button id="viewTop" title="Look straight down" type="button">TOP</button><button id="viewIso" title="Reset perspective" type="button">ISO</button>
         </div>
@@ -50,7 +56,7 @@
         <section class="panel field-panel" aria-label="Spatial field slice">
           <div class="panel-top"><div><span class="index">02 / SPATIAL FIELDS</span><h2>Transport field <small>actual solver grid</small></h2></div><select id="field"><option value="vapor">Vapor excess u</option><option value="temperature">ΔT [K]</option><option value="occupancy">Ice fraction φ</option><option value="electric">Electric |E| [MV/m]</option><option value="potential">Electric potential [V]</option></select></div>
           <div class="field-wrap"><canvas id="fieldCanvas" aria-label="Solver field image"></canvas><div class="field-scale"><span id="fieldMin">—</span><div class="scale-gradient"></div><span id="fieldMax">—</span></div></div>
-          <div class="field-footer"><span id="fieldInspect">HOVER FIELD TO INSPECT A CELL</span><span>GRID <b id="gridDim">—</b></span></div>
+          <div class="field-footer"><span id="fieldGeometry">SQUARE DIRICHLET FAR-FIELD · ARTIFACTS NEAR EDGES</span><span id="fieldInspect">HOVER FIELD TO INSPECT A CELL</span><span>GRID <b id="gridDim">—</b></span></div>
         </section>
         <section class="panel inspect-panel" aria-label="Physical interface budget">
           <div class="panel-top"><div><span class="index">03 / PHYSICS BUDGET</span><h2>Interface diagnostics</h2></div><span class="chip">MEASURED</span></div>
@@ -67,7 +73,7 @@
             <div><dt>Mean dielectric ln(c_eq ratio)</dt><dd id="bElectricShift">—</dd></div>
             <div><dt>Poisson residual RMS</dt><dd id="bEResidual">—</dd></div>
           </dl>
-          <div class="notice">The displayed solid is reconstructed from the resolved 2-D phase-field contour; depth represents the model's basal thickness. It is <strong>not</strong> a full 3-D diffusion solution.</div>
+          <div class="notice">The displayed solid is an extrusion of the 2-D phase contour. Height is one uniform model parameter, <strong>not</strong> 3-D diffusion or a resolved basal surface. Basal accretion is not included in the in-plane deposition/latent-energy budget.</div>
         </section>
       </div>
     </div>
@@ -78,12 +84,16 @@
         <label class="parameter" for="temp"><span>Temperature <b id="tempValue">−15 °C</b></span><input type="range" id="temp" min="-30" max="-2" step="1" value="-15"><small>Ambient far-field temperature</small></label>
         <label class="parameter" for="sigma"><span>Ice supersaturation <b id="sigmaValue">8.0 %</b></span><input type="range" id="sigma" min="1" max="25" step=".5" value="8"><small>Far-field vapor excess over ice</small></label>
         <label class="parameter" for="pressure"><span>Ambient pressure <b id="pressureValue">101.3 kPa</b></span><input type="range" id="pressure" min="60" max="110" step="1" value="101"><small>Transport coefficients scaled with pressure</small></label>
-        <div class="section-title">02 — FACET KINETICS</div>
+        <div class="section-title">02 — RESOLUTION / DOMAIN</div>
+        <label class="parameter" for="gridSize"><span>Basal-plane domain <b id="gridSizeValue">73 × 73 · 54.0 µm</b></span><select id="gridSize"><option value="73">73² · 54 µm · fast</option><option value="97">97² · 72 µm</option><option value="129">129² · 96 µm · detailed</option><option value="161">161² · 120 µm · slower</option></select><small>dx = 0.75 µm; larger grids improve boundary separation, not microscopic accuracy</small></label>
+        <div class="domain-report" id="domainReport" role="status" aria-live="polite"><b id="domainStatus">ASSESSING DOMAIN</b><span id="domainDetails">—</span></div>
+        <div class="section-title">03 — FACET KINETICS</div>
         <label class="parameter" for="anisotropy"><span>Sixfold anisotropy <b id="anisotropyValue">0.18</b></span><input type="range" id="anisotropy" min="0" max=".70" step=".02" value=".18"><small>Azimuthal modulation: 1 + a cos(6θ)</small></label>
         <label class="parameter" for="prism"><span>Prism nucleation barrier <b id="prismValue">0.0030</b></span><input type="range" id="prism" min=".0005" max=".02" step=".0005" value=".003"><small>σ₀ in α = A exp(−σ₀ / σ_surface)</small></label>
+        <label class="parameter" for="basalA"><span>Basal attachment prefactor <b id="basalAValue">0.009</b></span><input type="range" id="basalA" min="0.001" max=".1" step=".001" value=".009"><small>Uncalibrated facet accommodation A; controls out-of-plane thickness</small></label>
         <label class="parameter" for="seed"><span>Initial seed radius <b id="seedValue">1.5 µm</b></span><input type="range" id="seed" min="1" max="4" step=".25" value="1.5"><small>Postcritical ice seed; not nucleation</small></label>
         <div class="toggles"><label><input id="sdak" type="checkbox"> SDAK / edge enhancement</label><label><input id="capillarity" type="checkbox" checked> Gibbs–Thomson curvature</label><label><input id="rotate" type="checkbox" checked> Turntable camera</label></div>
-        <div class="section-title">03 — ELECTROSTATIC EXPERIMENT</div>
+        <div class="section-title">04 — ELECTROSTATIC EXPERIMENT</div>
         <div class="toggles"><label><input id="electricEnabled" type="checkbox"> Solve ∇·D = 0</label><label><input id="electricCouple" type="checkbox"> Apply dielectric-energy growth closure (approximate)</label></div>
         <label class="parameter" for="eField"><span>Far-field magnitude <b id="eFieldValue">2.0 MV/m</b></span><input type="range" id="eField" min="0" max="10" step=".25" value="2"><small>High-field laboratory scenario, not natural weather</small></label>
         <label class="parameter" for="eAngle"><span>Field azimuth <b id="eAngleValue">0°</b></span><input type="range" id="eAngle" min="0" max="360" step="5" value="0"><small>In-plane Dirichlet electric potential</small></label>
@@ -92,13 +102,16 @@
         <label class="parameter" for="bendAngle"><span>Gradient azimuth <b id="bendAngleValue">0°</b></span><input id="bendAngle" type="range" min="0" max="360" step="5" value="0"></label>
         <label class="parameter" for="muFlexo"><span>Flexo coefficient μ <b id="muFlexoValue">1.65 nC/m</b></span><input id="muFlexo" type="range" min="0" max="5" step=".05" value="1.65"><small>Illustrative ice Ih coefficient; anisotropy omitted</small></label>
         <div class="notice">EXPERIMENTAL. P = μ∇ε uses a <strong>prescribed</strong> strain gradient; mechanics is not solved. Electric growth uses a separate, opt-in fixed-field dielectric free-energy approximation. Neither is calibrated against observed dendrite growth.</div>
+        <p class="sidebar-note" id="habitNote">Choose a scenario and load it. Nakaya habit ranges are observational; these facet coefficients have not been calibrated to reproduce the habit diagram.</p>
+        <div class="status-pair"><span>Water-saturation cloud reference</span><strong id="waterLimit">—</strong></div>
         <div class="pending" id="pending" hidden>PARAMETERS CHANGED · RESET TO APPLY</div>
         <button id="apply" class="wide primary" type="button">↺ APPLY / RESTART SOLVER</button>
-        <div class="section-title">04 — MEASUREMENT / OUTPUT</div>
+        <div class="section-title">05 — MEASUREMENT / OUTPUT</div>
         <div class="exports"><button id="csv" type="button">↓ Data CSV</button><button id="png" type="button">↓ View PNG</button></div>
-        <div class="section-title">05 — MODEL STATUS</div>
+        <div class="section-title">06 — MODEL STATUS</div>
         <p class="sidebar-note">Nine-point isotropic vapor/heat relaxation. Phase-fraction interface, curvature correction, prism/basal attachment kinetics, latent-heat feedback, and optional variable-permittivity electrostatics. Deterministic for a fixed configuration.</p>
-        <div class="status-pair"><span>Model</span><strong>QUASI-STEADY 2.5-D</strong></div><div class="status-pair"><span>Scenario</span><strong id="scenario">REFERENCE · −15 °C</strong></div><div class="status-pair"><span>Electrostatics</span><strong id="electricReadout">DISABLED</strong></div><div class="status-pair"><span>Units</span><strong>SI INTERNAL</strong></div>
+        <div class="status-pair"><span>Model</span><strong>QUASI-STEADY 2.5-D</strong></div><div class="status-pair"><span>Scenario</span><strong id="scenario">REFERENCE · −15 °C</strong></div>
+        <div class="status-pair"><span>Model validity</span><strong id="validity">CHECKING</strong></div><div class="status-pair"><span>Electrostatics</span><strong id="electricReadout">DISABLED</strong></div><div class="status-pair"><span>Units</span><strong>SI INTERNAL</strong></div>
       </div>
     </aside>
   </main>
