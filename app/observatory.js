@@ -462,6 +462,10 @@ function drawField(s) {
   const can=$('fieldCanvas'),ctx=can.getContext('2d'),kind=$('field').value;
   if(!ctx)return;
   const N=s.n,{values,scale,unit}=fieldValues(s,kind);
+  can.style.imageRendering=s.topology==='triangular'?'auto':'pixelated';
+  $('fieldFidelity').textContent=s.topology==='triangular'
+    ?'PIECEWISE-LINEAR 2-D DISPLAY · '+$('fieldResolution').value+' px · SOLVER dx 0.75 µm':
+      'RAW CARTESIAN CELL RASTER · SOLVER dx 0.75 µm';
   if(s.topology==='triangular'){drawHexField(s,ctx,can,kind,values,scale,unit);return;}
   const data=[];
   for(let k=0;k<N*N;k++){
