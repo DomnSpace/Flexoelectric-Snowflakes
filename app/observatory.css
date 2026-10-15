@@ -16,3 +16,8 @@
 button:disabled{opacity:.5;cursor:not-allowed}
 @media(max-width:1000px){.instrument .domain-report{grid-column:1/-1}}
 @media(max-width:700px){.habit-picker{width:100%}.habit-picker select{max-width:none;width:100%}.field-footer{font-size:8px}}
+
+/* Pass 7: opt-in five-plane uniform-slab preview. This UI never alters physics. */
+.layer-picker select{max-width:260px;letter-spacing:0;font-size:11px}
+.layer-caption{bottom:43px;left:25px;max-width:70%;color:#97d3e9;letter-spacing:.09em;text-shadow:0 1px 4px #061923}
+@media(max-width:700px){.layer-picker{width:100%;justify-content:space-between}.layer-picker select{flex:1;max-width:none}.layer-caption{bottom:49px;left:15px;max-width:85%;font-size:8px}}

@@ -13,6 +13,7 @@ const tests = [
   './habit-domain.test.mjs',
   './hex25d.test.mjs',
   './anisotropy-phase.test.mjs',
+  './pass7-snapshot-layers.test.mjs',
   './electric25d.test.mjs',
   './fieldlines.test.mjs',
 ];
