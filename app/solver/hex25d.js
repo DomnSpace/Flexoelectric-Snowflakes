@@ -247,21 +247,19 @@ export function resolvedHexGrowthStep(state,dt,{vaporIterations=45,heatIteration
  * extraction only, never fed back into the physical step.
  */
 export function sampleHexLinear(state,values,x,y){
-  const a=state.dx,RF=2*y/(a*RT3),QF=x/a-RF/2;
-  const q=Math.floor(QF),r=Math.floor(RF),u=QF-q,v=RF-r;
-  let c0,c1,c2,w0,w1,w2;
+  const a=state.dx,rf=2*y/(a*RT3),qf=x/a-rf/2;
+  const q=Math.floor(qf),r=Math.floor(rf),u=qf-q,v=rf-r;
+  const N=state.N,R=state.R,qi=q+R,rj=r+R;
+  if(qi<0||rj<0||qi+1>=N||rj+1>=N)return NaN;
+  const base=rj*N+qi,mask=state.mask;
+  let k0,k1,k2,w0,w1,w2;
   if(u+v<=1){
-    c0=[q,r];c1=[q+1,r];c2=[q,r+1];
+    k0=base;k1=base+1;k2=base+N;
     w0=1-u-v;w1=u;w2=v;
   }else{
-    c0=[q+1,r+1];c1=[q,r+1];c2=[q+1,r];
+    k0=base+N+1;k1=base+N;k2=base+1;
     w0=u+v-1;w1=1-u;w2=1-v;
   }
-  const R=state.R,N=state.N,mask=state.mask;
-  const i0=c0[0]+R,j0=c0[1]+R,i1=c1[0]+R,j1=c1[1]+R,i2=c2[0]+R,j2=c2[1]+R;
-  if(i0<0||i1<0||i2<0||j0<0||j1<0||j2<0||
-    i0>=N||i1>=N||i2>=N||j0>=N||j1>=N||j2>=N)return NaN;
-  const k0=j0*N+i0,k1=j1*N+i1,k2=j2*N+i2;
   if(!mask[k0]||!mask[k1]||!mask[k2])return NaN;
   return w0*values[k0]+w1*values[k1]+w2*values[k2];
 }
