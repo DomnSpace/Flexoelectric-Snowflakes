@@ -1,0 +1,167 @@
+{
+  "schema": "snowflake/legacy-baseline-v1",
+  "legacyCommit": "77f118c091a2fd1ae278c899e7d5f6a1715ebc54",
+  "traceUnits": "SI",
+  "platformNote": "Float64 little-endian SHA256 fingerprints generated in Node 22 CI; compare within same runtime architecture",
+  "cases": [
+    {
+      "case": "hex0",
+      "topology": "triangular",
+      "gridN": 41,
+      "gridSpacingM": 7.5e-7,
+      "steps": 12,
+      "dtSeconds": 0.5,
+      "vaporRelaxationsPerStep": 14,
+      "heatRelaxationsPerStep": 18,
+      "snapshots": [
+        {
+          "step": 1,
+          "fieldsSHA256": "32177b847874a6e396496eeea0be93adf3bbd3b664c412191e9bde4ed160d821"
+        },
+        {
+          "step": 6,
+          "fieldsSHA256": "9709fc1c698fed71463b0c2347232ced0b753ba60282ab7b8863aeaaac3030dc"
+        },
+        {
+          "step": 12,
+          "fieldsSHA256": "2852df7251682d3f50102bf95a3457e1d7d7dc22d396ab99cece829b7e83a617"
+        }
+      ],
+      "measurements": [
+        {
+          "step": 1,
+          "t": 0.5,
+          "depositedMassKg": 2.271749685535498e-14,
+          "totalLatentHeatJ": 6.521171059813925e-8,
+          "halfThicknessM": 0.000003429993476365108,
+          "m6": 0.045757436493396024,
+          "interfaceCells": 18
+        },
+        {
+          "step": 6,
+          "t": 3,
+          "depositedMassKg": 8.738741716758121e-13,
+          "totalLatentHeatJ": 0.000002508499503504002,
+          "halfThicknessM": 0.000008640098919117972,
+          "m6": 0.04431501429685245,
+          "interfaceCells": 90
+        },
+        {
+          "step": 12,
+          "t": 6,
+          "depositedMassKg": 4.367291949234789e-12,
+          "totalLatentHeatJ": 0.000012536529904875921,
+          "halfThicknessM": 0.00001326911964635121,
+          "m6": 0.029737671712147525,
+          "interfaceCells": 216
+        }
+      ]
+    },
+    {
+      "case": "hex30",
+      "topology": "triangular",
+      "gridN": 41,
+      "gridSpacingM": 7.5e-7,
+      "steps": 12,
+      "dtSeconds": 0.5,
+      "vaporRelaxationsPerStep": 14,
+      "heatRelaxationsPerStep": 18,
+      "snapshots": [
+        {
+          "step": 1,
+          "fieldsSHA256": "693d95f8e76d79f0f50994c762324c15e82f8531feedc4279537a30c726acc90"
+        },
+        {
+          "step": 6,
+          "fieldsSHA256": "bdc2045bc6877da92687dc1fe71c37380cef96e724954bd06e2c8f3fc70851d9"
+        },
+        {
+          "step": 12,
+          "fieldsSHA256": "4b587ad9927c1a2b7cf67b636e60c291f3a925f7087ebe07f6aa2b8301248555"
+        }
+      ],
+      "measurements": [
+        {
+          "step": 1,
+          "t": 0.5,
+          "depositedMassKg": 2.1073379153891278e-14,
+          "totalLatentHeatJ": 6.04921885302026e-8,
+          "halfThicknessM": 0.000003429993476365108,
+          "m6": 0.03360269538087521,
+          "interfaceCells": 18
+        },
+        {
+          "step": 6,
+          "t": 3,
+          "depositedMassKg": 8.402731705061366e-13,
+          "totalLatentHeatJ": 0.0000024120461495963903,
+          "halfThicknessM": 0.000008744589433741927,
+          "m6": 0.0011706888813657348,
+          "interfaceCells": 90
+        },
+        {
+          "step": 12,
+          "t": 6,
+          "depositedMassKg": 3.837836659848035e-12,
+          "totalLatentHeatJ": 0.000011016702023926778,
+          "halfThicknessM": 0.000013138286221884806,
+          "m6": 0.05048766836895243,
+          "interfaceCells": 174
+        }
+      ]
+    },
+    {
+      "case": "cartesian",
+      "topology": "square",
+      "gridN": 41,
+      "gridSpacingM": 7.5e-7,
+      "steps": 12,
+      "dtSeconds": 0.5,
+      "vaporRelaxationsPerStep": 14,
+      "heatRelaxationsPerStep": 18,
+      "snapshots": [
+        {
+          "step": 1,
+          "fieldsSHA256": "f6fa7bae73672206fed3d2ac9acd22914240544553ee7247220bdb34f10dad00"
+        },
+        {
+          "step": 6,
+          "fieldsSHA256": "2b96ee2e3acd41cc3a55ed2c2aea9def960849a993b06ebdad9ca8e9176d82c3"
+        },
+        {
+          "step": 12,
+          "fieldsSHA256": "906a3f834ee31249560a7952dbc87991f54e866a5074aa9cb1ff6e1497b119fd"
+        }
+      ],
+      "measurements": [
+        {
+          "step": 1,
+          "t": 0.5,
+          "depositedMassKg": 9.877439254343195e-15,
+          "totalLatentHeatJ": 2.8353683251554857e-8,
+          "halfThicknessM": 0.000003821345073948939,
+          "m6": 3.6379754231644634e-17,
+          "interfaceCells": 24
+        },
+        {
+          "step": 6,
+          "t": 3,
+          "depositedMassKg": 2.0196805513926652e-12,
+          "totalLatentHeatJ": 0.000005797594006800215,
+          "halfThicknessM": 0.000016336037821998416,
+          "m6": 3.414320431724853e-17,
+          "interfaceCells": 260
+        },
+        {
+          "step": 12,
+          "t": 6,
+          "depositedMassKg": 1.1907328923225283e-11,
+          "totalLatentHeatJ": 0.000034180583040564336,
+          "halfThicknessM": 0.000025627153036626944,
+          "m6": 5.19495078929286e-17,
+          "interfaceCells": 604
+        }
+      ]
+    }
+  ]
+}
