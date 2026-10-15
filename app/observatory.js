@@ -28,7 +28,7 @@ const BASE_STEPS_PER_SECOND = 3;
 const MAX_SNAPSHOTS = 360;
 const MAX_STORED_GRID_CELLS=360*73*73; // cap snapshot memory on 401² grids
 const DX=0.75e-6;
-const ids = ['temp','sigma','pressure','anisotropy','prism','basalA','seed','gridSize','sdak','capillarity','electricEnabled','electricCouple','eField','eAngle','epsIce','bendGradient','bendAngle','muFlexo'];
+const ids = ['temp','sigma','pressure','anisotropy','prism','basalA','seed','gridSize','kineticPhase','surfaceEpsilon','seedShape','seedPhase','sdak','capillarity','electricEnabled','electricCouple','eField','eAngle','epsIce','bendGradient','bendAngle','muFlexo'];
 const labels = [
   ['temp','tempValue',v => num(v,0)+' °C'],
   ['sigma','sigmaValue',v => num(v,1)+' %'],
@@ -37,6 +37,9 @@ const labels = [
   ['prism','prismValue',v => num(v,4)],
   ['seed','seedValue',v => num(v,2)+' µm'],
   ['basalA','basalAValue',v => num(v,3)],
+  ['kineticPhase','kineticPhaseValue',v => num(v,0)+'°'],
+  ['surfaceEpsilon','surfaceEpsilonValue',v => num(v,3)],
+  ['seedPhase','seedPhaseValue',v => num(v,0)+'°'],
   ['gridSize','gridSizeValue',v => v+' × '+v+' · '+num(modelDomainUm(v,DX),1)+' µm'],
   ['eField','eFieldValue',v => num(v,2)+' MV/m'],
   ['eAngle','eAngleValue',v => num(v,0)+'°'],
@@ -60,10 +63,15 @@ function config() {
     N: v('gridSize'), dx: DX, Tinf: 273.15 + v('temp'),
     sigmaInf: v('sigma')/100, pressurePa: v('pressure')*1000,
     seedRadius: v('seed')*1e-6, basalHalfThickness: 1.5e-6,
+    seedShape:$('seedShape').value,seedRotationDeg:v('seedPhase'),
     kinetics: {
       prism: {mode:'nucleation',A:1,sigma0:v('prism')},
       basal: {...DEFAULT_ICE_KINETICS.basal,A:v('basalA')},
-      anisotropy6: v('anisotropy'), sdak:$('sdak').checked,
+      anisotropy6: v('anisotropy'),
+      kineticPhaseDeg:v('kineticPhase'),
+      surfaceEnergyEpsilon:v('surfaceEpsilon'),
+      surfacePhaseDeg:v('kineticPhase'),
+      sdak:$('sdak').checked,
       sdakStrength:0.55, capillarity:$('capillarity').checked,
       gammaIv:DEFAULT_ICE_KINETICS.gammaIv
     },
@@ -83,6 +91,7 @@ function cloudSaturationSigma(tC){
 }
 function formatControls() {
   for(const [id,out,fmt] of labels) $(out).textContent=fmt(Number($(id).value));
+  $('seedShapeValue').textContent=$('seedShape').value==='hex'?'Hexagonal':'Circular';
   const cap=cloudSaturationSigma(Number($('temp').value));
   const above=Number($('sigma').value)/100>cap+1e-7;
   $('waterLimit').textContent=num(cap*100,1)+' % above ice'+(above?' · ABOVE WATER SATURATION':'');
@@ -250,6 +259,8 @@ function updateBudget(s) {
     bCells:b?String(b.interfaceCells):'—',
     bCurve:b?num(b.meanCurvature*1e-6,4)+' µm⁻¹':'—',
     bCap:b?num(b.meanCapillaryExponent,6):'—',
+    bPhase:s.topology==='triangular'?num(b?.kineticPhaseDeg??Number($('kineticPhase').value),0)+'°':'CARTESIAN',
+    bStiffness:s.topology==='triangular'?num(b?.surfaceEnergyEpsilon??Number($('surfaceEpsilon').value),3):'CARTESIAN',
     bFlux:b?num(pg(b.totalMassRate),5)+' pg/s':'—',
     bEField:s.eEnabled?num((s.eDiagnostics?.maxFieldVM||0)*1e-6,4)+' MV/m':'OFF',
     bPolar:s.eEnabled?num((s.eDiagnostics?.maxPolarization||0)*1e6,4)+' µC/m²':'OFF',
@@ -603,7 +614,7 @@ function downloadCsv(){
   const columns=['time_s','radius_um','mean_radius_um','half_thickness_um','deposited_mass_pg','latent_energy_J','max_dT_mK','m4_relative','m6_relative','m12_relative','mean_interface_sigma','mean_prism_alpha','alpha_basal','interface_cells','mass_rate_pg_s','basal_velocity_um_s','mean_curvature_per_um','mean_capillary_exponent',
     'max_electric_field_MV_m','flexoelectric_P_uC_m2','mean_dielectric_log_shift','poisson_residual_V','electric_coupled',
     'domain_um','tip_radius_um','halo_cells','thickness_um','halfthickness_over_tipradius','domain_stop','water_saturation_ice_percent','habit',
-    'topology','domain_expansions'];
+    'topology','domain_expansions','kinetic_phase_deg','surface_epsilon','seed_shape','seed_phase_deg'];
   const rows=[columns.join(',')];
   for(const s of frames){
     const b=s.budget||{},m=s.morph;
@@ -614,7 +625,8 @@ function downloadCsv(){
       s.eDiagnostics?s.eDiagnostics.maxFieldVM*1e-6:'',s.eDiagnostics?s.eDiagnostics.maxPolarization*1e6:'',
       b.meanElectricLogShift??0,s.eDiagnostics?.residualRmsV??'',s.eCoupled?1:0,
       s.audit.domainUm,s.audit.tipRadiusUm,s.audit.haloCells,s.audit.thicknessUm,s.audit.plateRatio,
-      s.audit.stop?1:0,s.waterSaturationPercent,s.habit,s.topology,s.expansions];
+      s.audit.stop?1:0,s.waterSaturationPercent,s.habit,s.topology,s.expansions,b.kineticPhaseDeg??'',b.surfaceEnergyEpsilon??'',
+      b.seedShape??'',b.seedRotationDeg??''];
     rows.push(values.map(v=>v??'').join(','));
   }
   download('snowflake-observatory-'+new Date().toISOString().slice(0,10)+'.csv','text/csv;charset=utf-8',rows.join('\r\n')+'\r\n');
@@ -660,6 +672,8 @@ function loadSelectedHabit(){
   // Weather scenarios are neutral; electric forcing is a separate experiment.
   $('electricEnabled').checked=false;$('electricCouple').checked=false;
   $('eField').value='2';$('bendGradient').value='0';
+  $('kineticPhase').value='0';$('surfaceEpsilon').value='0';
+  $('seedShape').value='circle';$('seedPhase').value='0';
   $('topology').value='triangular';topologyControls();
   activeHabit=key;formatControls();reset(true);describeSelectedHabit();
 }
@@ -670,6 +684,9 @@ function topologyControls(){
   for(const name of ['electricEnabled','electricCouple']){
     if(hex)$(name).checked=false;
     $(name).disabled=hex;
+  }
+  for(const name of ['kineticPhase','surfaceEpsilon','seedShape','seedPhase']){
+    $(name).disabled=!hex;
   }
   for(const opt of $('gridSize').options){
     opt.disabled=!hex&&Number(opt.value)>161;
@@ -696,7 +713,8 @@ function setupEvents(){
   for(const [id] of labels)$(id).addEventListener('input',()=>{
     activeHabit='custom';formatControls();setPending(true);
   });
-  for(const id of ['sdak','capillarity','electricEnabled','electricCouple','epsIce'])$(id).addEventListener('change',()=>{
+  for(const id of ['sdak','capillarity','electricEnabled','electricCouple','epsIce',
+      'kineticPhase','surfaceEpsilon','seedShape','seedPhase'])$(id).addEventListener('change',()=>{
     activeHabit='custom';formatControls();setPending(true);
   });
   $('apply').addEventListener('click',()=>reset(true));

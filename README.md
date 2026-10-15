@@ -45,6 +45,10 @@ The fixed 0.5-second model step and bounded 360-frame history make replay determ
 The source-level contract test verifies expected DOM bindings, real solver imports, and numerical snapshot fields. The existing numerical suite covers physical modules. Browser-level WebGL rendering and CDN retrieval still require verification on a modern Chromium browser. GitHub Actions runs syntax and Node tests on the feature branch and pull requests.
 
 
+## Crystal orientation / tip-splitting investigation
+
+[ANISOTROPY_PHASE_STUDY.md](ANISOTROPY_PHASE_STUDY.md) explains the physically separated and falsifiable hex solver experiments: a selectable 0°/15°/30° phase in the **local surface-normal** attachment factor, optional positive anisotropic surface stiffness (gamma + gamma-double-prime), and a real rotated hexagonal ice seed. These are NOT dielectric effects; the electric module remains Cartesian-only. The controls default to the original physics and do not enforce six stems or manufacture morphology. Compare with zero kinetic anisotropy and the phase-sweep test results before claiming the 30° setting suppresses splitting.
+
 ## 300 µm live hex-domain / crisp field display
 
 [DOMAIN_300UM.md](DOMAIN_300UM.md) details the physically **300 µm** hexagonal domain (401 axial index width, 120,601 active sites at unchanged 0.75 µm spacing), optimized six-neighbor relaxation, the automatic domain ladder, bounded replay memory and 768/1024/1536-pixel *display-only* field interpolation.

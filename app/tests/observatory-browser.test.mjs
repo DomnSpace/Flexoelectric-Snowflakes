@@ -90,7 +90,25 @@ try{
   assert.equal(Number(await page.locator('#basalA').inputValue()),.009);
   assert.match(await page.locator('#domainStatus').innerText(),/VALIDITY|CAUTION/);
   assert.equal(await page.locator('#errorOverlay').isVisible(),false);
-  await page.locator('#topology').selectOption('square');
+  // Controlled 30° test must reach the HEX PHYSICS, not just its labels.
+  await page.locator('#kineticPhase').selectOption('30');
+  await page.locator('#surfaceEpsilon').selectOption('.02');
+  await page.locator('#seedShape').selectOption('hex');
+  await page.locator('#seedPhase').selectOption('30');
+  assert.equal(await page.locator('#pending').isVisible(),true,
+    'changing a physical orientation requires a solver restart');
+  await page.locator('#apply').click();
+  assert.equal(await page.locator('#errorOverlay').isVisible(),false);
+  assert.equal((await page.locator('#bPhase').innerText()).trim(),'30°');
+  assert.equal((await page.locator('#bStiffness').innerText()).trim(),'0.020');
+  await page.locator('#step').click();
+  assert.equal(await page.locator('#errorOverlay').isVisible(),false,
+    'anisotropic surface stiffness and hexagonal seed must not break growth');
+  const phaseCsv=page.waitForEvent('download');
+  await page.locator('#csv').click();
+  const phaseDownload=await phaseCsv;
+  assert.match(phaseDownload.suggestedFilename(),/\.csv$/);
+    await page.locator('#topology').selectOption('square');
   await page.locator('#apply').click();
   assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),97,
     'Cartesian baseline remains independently functional for A/B tests');
