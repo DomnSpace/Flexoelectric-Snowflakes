@@ -45,6 +45,14 @@ The fixed 0.5-second model step and bounded 360-frame history make replay determ
 The source-level contract test verifies expected DOM bindings, real solver imports, and numerical snapshot fields. The existing numerical suite covers physical modules. Browser-level WebGL rendering and CDN retrieval still require verification on a modern Chromium browser. GitHub Actions runs syntax and Node tests on the feature branch and pull requests.
 
 
+## Five-layer competition roadmap — baseline step 1/15
+
+[FIVE_LAYER_RESEARCH_DECISION.md](FIVE_LAYER_RESEARCH_DECISION.md) records the evidence and provisional choice of **five ice-eligible layers sharing a vertically resolved finite-volume vapor/heat environment**, with separate gas halo slabs. Crucially, it does **not** prescribe fastest central-layer growth: all exposure and attachment preferences must emerge from computed flux and kinetics. It treats this as a coarse 3D transport discretization, not solved molecular ice or an already calibrated five-layer model.
+
+[FIVE_LAYER_BASELINE.md](FIVE_LAYER_BASELINE.md) pins the exact immutable pre-coupling Pass 7 commit and a frozen branch. The legacy hex/Cartesian solvers stay unchanged. A new independent capture produces nine deterministic SHA256 references for vapor, heat, ice, phase and sources (three physical checkpoint steps × three solver cases); SI mass/latent-heat/basal-height results are committed in `app/tests/fixtures/five-layer-legacy-v1.json`. Run `node app/tests/five-layer-baseline.test.mjs` to verify that new modules have not unintentionally changed the baseline.
+
+**No new vertical ice growth, local solved thickness or vapor competition is claimed by Step 1.** The five transparent layers remain explicitly labeled a uniform-slab preview. Model B's conservative gas/ice face-flux interface is the next implementation gate; the original solver and current GitHub Pages remain intact.
+
 ## Pass 7 — Versioned ice snapshots and five transparent layers
 
 [PASS7_STATE_AND_LAYERS.md](PASS7_STATE_AND_LAYERS.md) describes the versioned SI snapshot boundary, a render-only **five-sheet preview** at five physically spaced z elevations, and tests that the solver's deposition, heating and fields remain unchanged. In the Observatory, switch **ICE VIEW → 5 translucent height slices · preview** to compare with the legacy solid slab without resetting the simulation. The five sheets **currently share the same measured basal contour** because the original solver has only one uniform height. This is an honest optical preview for Pass 8's locally varying mass-conserving height model, **not** a calculated set of internal crystal ribs.
