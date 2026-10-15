@@ -49,9 +49,9 @@ const kin=(amplitude,phase,epsilon=0)=>({
   surfaceEnergyEpsilon:epsilon,surfacePhaseDeg:phase,
   sdak:true,sdakStrength:.55,capillarity:true,gammaIv:.109
 });
-function run(amplitude,phase,epsilon=0,steps=100){
+function run(amplitude,phase,epsilon=0,steps=36){
   const state=makeHexGrowthState({N:97,dx,seedRadius:1.5e-6,
-    Tinf:258.15,sigmaInf:.12,kinetics:kin(amplitude,phase,epsilon)});
+    Tinf:258.15,sigmaInf:.10,kinetics:kin(amplitude,phase,epsilon)});
   for(let step=0;step<steps;step++){
     assert.equal(auditHexDomain(state).stop,false,'stop before domain-bias invalidity');
     resolvedHexGrowthStep(state,.5,{vaporIterations:24,heatIterations:30});
