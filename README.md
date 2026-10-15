@@ -44,6 +44,15 @@ The fixed 0.5-second model step and bounded 360-frame history make replay determ
 
 The source-level contract test verifies expected DOM bindings, real solver imports, and numerical snapshot fields. The existing numerical suite covers physical modules. Browser-level WebGL rendering and CDN retrieval still require verification on a modern Chromium browser. GitHub Actions runs syntax and Node tests on the feature branch and pull requests.
 
+
+## Grounded habit scenarios / numerical validity
+
+See [SCENARIO_VALIDITY.md](SCENARIO_VALIDITY.md) for the literature basis, exact temperature/supersaturation presets, adjustable solver-domain geometry, basal-thickness warnings, finite-domain stop conditions and **limitations that prevent any guarantee of dendrites**.
+
+The Habits control loads three exploratory, neutral-field, **−15 °C plate-regime** scenarios using the same solver. The `−5 °C needle/column` reference is explicitly disabled: it requires 3-D vapor/heat and face-specific growth rather than a 2-D outline extruded to a fake needle. Domain size is 73²–161² at constant 0.75 µm spacing; grid-point width is `(N−1)dx`, not `N dx`. The UI tracks minimum remaining halo to the square Dirichlet boundary and actual plate thickness relative to tip radius, and pauses runs that leave stated validity limits. Mean basal attachment prefactor A is now visible instead of being hidden at A = 1, but it remains **uncalibrated**.
+
+The previous very tall-column screenshot is an expected sign that out-of-plane growth was unconstrained by a resolved z transport model. The present guard prevents presenting such objects as validated snowflakes; it does not add that missing physics.
+
 ## GitHub Pages — browser-only launch
 
 GitHub Pages is already enabled for this public repository. Its current setting was verified through the Pages API on 2026-10-14:
