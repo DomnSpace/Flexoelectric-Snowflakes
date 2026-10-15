@@ -30,6 +30,43 @@ try{
   await page.locator('#step').click();
   const t1=parseFloat(await page.locator('#kTime').innerText());
   assert.ok(t1>t0,'actual physics step must advance time');
+  // Pass 7: rendering and replay must be independent from physics.
+  assert.match(await page.locator('#snapshotVersion').innerText(),/v1/);
+  assert.match(await page.locator('#snapshotRepresentation').innerText(),/UNIFORM SLAB/);
+  const beforeView={
+    time:await page.locator('#kTime').innerText(),
+    mass:await page.locator('#kMass').innerText(),
+    radius:await page.locator('#kRadius').innerText()
+  };
+  await page.locator('#iceView').selectOption('five');
+  assert.equal(await page.locator('#viewport').getAttribute('data-ice-slices'),'5');
+  assert.match(await page.locator('#sliceStatus').innerText(),/PREVIEW ONLY/);
+  assert.match(await page.locator('#viewLabel').innerText(),/5 × 24.5%/);
+  for(let k=0;k<3;k++){
+    await page.locator('#iceView').selectOption('solid');
+    assert.equal(await page.locator('#viewport').getAttribute('data-ice-slices'),'0');
+    await page.locator('#iceView').selectOption('five');
+    assert.equal(await page.locator('#viewport').getAttribute('data-ice-slices'),'5');
+  }
+  assert.deepEqual({
+    time:await page.locator('#kTime').innerText(),
+    mass:await page.locator('#kMass').innerText(),
+    radius:await page.locator('#kRadius').innerText()
+  },beforeView,'switching five 3-D layers must not alter the physical snapshot');
+  // Frame-zero replay uses the same view; returning to LIVE must not change
+  // the model time, mass or ice fraction or invoke the solver.
+  await page.locator('#scrub').evaluate(el=>{
+    el.value='0';el.dispatchEvent(new Event('input',{bubbles:true}));
+  });
+  assert.equal(await page.locator('#viewport').getAttribute('data-ice-slices'),'5');
+  await page.locator('#live').click();
+  assert.deepEqual({
+    time:await page.locator('#kTime').innerText(),
+    mass:await page.locator('#kMass').innerText(),
+    radius:await page.locator('#kRadius').innerText()
+  },beforeView,'replay roundtrip must restore unchanged captured state');
+  await page.locator('#iceView').selectOption('solid');
+
   await page.locator('#sigma').evaluate(el=>{el.value='19';el.dispatchEvent(new Event('input',{bubbles:true}));});
   assert.equal(await page.locator('#pending').isVisible(),true,'parameter changes must be pending');
   await page.locator('#apply').click();
@@ -140,6 +177,9 @@ try{
     '401-node hex simulation must not fail');
   const maxReplay=Number(await page.locator('#scrub').getAttribute('max'));
   assert.ok(maxReplay<=20,'large-grid replay remains memory bounded');
+  // Leave the full-resolution screenshot in the new layered mode.
+  await page.locator('#iceView').selectOption('five');
+  assert.equal(await page.locator('#viewport').getAttribute('data-ice-slices'),'5');
   await mkdir(resolve('artifacts'),{recursive:true});
   await page.screenshot({path:'artifacts/snowflake-observatory.png',fullPage:true,animations:'disabled'});
   assert.deepEqual(errors,[],'no browser script/console errors');
