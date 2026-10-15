@@ -507,25 +507,54 @@ function showReplay(index){
   setStatus(replay?'REPLAYING STORED SOLVER STATE':playing?'SOLVER RUNNING':'SOLVER PAUSED');
   sync();
 }
+function describeSelectedHabit(){
+  const habit=GROWTH_HABITS[$('habit').value];
+  if(!habit)return;
+  $('habitNote').textContent=(habit.supported?'OBSERVED HABIT TARGET · ':'NOT SIMULATED · ')+
+    habit.expectation+' '+(habit.limitation||habit.calibration)+'. '+habit.evidence+'.';
+  $('preset').disabled=!habit.supported;
+  $('preset').title=habit.supported?'Apply exploratory scenario; no guaranteed morphology':habit.limitation;
+}
+function loadSelectedHabit(){
+  const key=$('habit').value,habit=GROWTH_HABITS[key];
+  if(!habit?.supported){
+    describeSelectedHabit();
+    setStatus('UNSUPPORTED HABIT · NEEDLE/COLUMN REQUIRES RESOLVED 3-D',true);
+    return;
+  }
+  const values={
+    temp:habit.temperatureC,sigma:habit.sigmaPercent,pressure:habit.pressureKPa,
+    anisotropy:habit.anisotropy6,prism:habit.prismSigma0,basalA:habit.basalA,
+    seed:habit.seedRadiusUm,gridSize:habit.gridN
+  };
+  for(const [id,value] of Object.entries(values))$(id).value=String(value);
+  $('sdak').checked=habit.sdak;$('capillarity').checked=habit.capillarity;
+  // Weather scenarios are neutral; electric forcing is a separate experiment.
+  $('electricEnabled').checked=false;$('electricCouple').checked=false;
+  $('eField').value='2';$('bendGradient').value='0';
+  activeHabit=key;formatControls();reset(true);describeSelectedHabit();
+}
 function setupEvents(){
   formatControls();
-  for(const [id] of labels)$(id).addEventListener('input',()=>{formatControls();setPending(true);});
+  describeSelectedHabit();
+  for(const [id] of labels)$(id).addEventListener('input',()=>{
+    activeHabit='custom';formatControls();setPending(true);
+  });
   for(const id of ['sdak','capillarity','electricEnabled','electricCouple','epsIce'])$(id).addEventListener('change',()=>{
-    formatControls();setPending(true);
+    activeHabit='custom';formatControls();setPending(true);
   });
   $('apply').addEventListener('click',()=>reset(true));
   $('reset').addEventListener('click',()=>reset(false));
   $('step').addEventListener('click',()=>{
     if(replay){replay=false;selectedIndex=frames.length-1;}
-    playing=false;$('play').textContent='▶ Play';advance();setStatus('SOLVER PAUSED');
+    playing=false;$('play').textContent='▶ Play';advance();
+    const audit=current()?.audit;
+    setStatus(audit?.stop?'MODEL DOMAIN STOP · '+audit.reason:
+      audit?.warning?'MODEL VALIDITY WARNING · '+audit.reason:'SOLVER PAUSED');
   });
   $('play').addEventListener('click',play);
-  $('preset').addEventListener('click',()=>{
-    $('temp').value=-15;$('sigma').value=18;$('anisotropy').value=.54;
-    $('prism').value=.0035;$('seed').value=1.5;$('sdak').checked=true;
-    $('capillarity').checked=true;formatControls();reset(true);
-    $('scenario').textContent='SDAK · DENDRITIC EXPLORATION';
-  });
+  $('habit').addEventListener('change',describeSelectedHabit);
+  $('preset').addEventListener('click',loadSelectedHabit);
   $('field').addEventListener('change',()=>{if(current())drawField(current());});
   $('fieldCanvas').addEventListener('pointermove',onFieldMove);
   $('fieldCanvas').addEventListener('pointerleave',()=>$('fieldInspect').textContent='HOVER FIELD TO INSPECT A CELL');
