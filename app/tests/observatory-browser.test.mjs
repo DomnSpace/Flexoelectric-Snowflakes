@@ -56,6 +56,26 @@ try{
   await page.locator('#csv').click();
   const download=await downloadPromise;
   assert.match(download.suggestedFilename(),/\.csv$/);
+  // Preset switches are observational hypotheses, not geometry shortcuts.
+  await page.locator('#habit').selectOption('dendrite');
+  await page.locator('#preset').click();
+  assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),129,
+    'dendritic experiment uses a larger solver field, not zoom');
+  assert.match(await page.locator('#scenario').innerText(),/STELLAR DENDRITE CANDIDATE/);
+  assert.match(await page.locator('#waterLimit').innerText(),/above ice/);
+  assert.match(await page.locator('#domainDetails').innerText(),/HALO/);
+  assert.equal(await page.locator('#electricEnabled').isChecked(),false,
+    'atmospheric habit presets must not silently energize the electric model');
+  await page.locator('#habit').selectOption('needle');
+  assert.equal(await page.locator('#preset').isDisabled(),true,
+    'unsupported needle must not manufacture an extruded column');
+  assert.match(await page.locator('#habitNote').innerText(),/not simulated/i);
+  await page.locator('#habit').selectOption('plate');
+  await page.locator('#preset').click();
+  assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),97);
+  assert.equal(await page.locator('#basalA').inputValue(),'.009');
+  assert.match(await page.locator('#domainStatus').innerText(),/VALIDITY|CAUTION/);
+  assert.equal(await page.locator('#errorOverlay').isVisible(),false);
   await mkdir(resolve('artifacts'),{recursive:true});
   await page.screenshot({path:'artifacts/snowflake-observatory.png',fullPage:true,animations:'disabled'});
   assert.deepEqual(errors,[],'no browser script/console errors');
