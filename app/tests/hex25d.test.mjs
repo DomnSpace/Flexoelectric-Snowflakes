@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {makeHexGrowthState,HEX_NEIGHBORS,HEX_CELL_AREA_MULTIPLIER,
   axialToXY,axialRadius,axialRoundFromXY,
   hexCellAtXY,hexGrowthMorphology,relaxHexScalar,resolvedHexGrowthStep,
-  auditHexDomain,enlargeHexDomain} from '../solver/hex25d.js';
+  auditHexDomain,enlargeHexDomain,sampleHexLinear} from '../solver/hex25d.js';
 
 const a=.75e-6,N=73,R=(N-1)/2;
 const s=makeHexGrowthState({N,dx:a,Tinf:258.15,sigmaInf:.10});
@@ -85,10 +85,61 @@ assert.ok(expanded.sigma.every(Number.isFinite));
 resolvedHexGrowthStep(expanded,.5,{vaporIterations:12,heatIterations:14});
 assert.ok(expanded.totalDepositedMass>=mass);
 
+// Triangular field interpolation reproduces all three vertex values
+// and exactly reproduces linear physical fields, without adding solver DOF.
+const field=new Float64Array(s.N*s.N);
+for(let j=0;j<s.N;j++)for(let i=0;i<s.N;i++){
+  const {x,y}=axialToXY(i-s.R,j-s.R,s.dx);
+  field[j*s.N+i]=2.5+2e4*x-3e4*y;
+}
+for(const [q,r] of [[0,0],[5,-1],[-9,8]]){
+  const p=axialToXY(q+.22,r+.35,s.dx);
+  const got=sampleHexLinear(s,field,p.x,p.y);
+  const want=2.5+2e4*p.x-3e4*p.y;
+  assert.ok(Math.abs(got-want)<1e-10,'linear triangular interpolation must be exact');
+}
+
+// Large-domain reality check: 401 nodes at 0.75 µm really spans 300 µm;
+// a single resolved step must remain finite and advance physical time.
+// No arbitrary visual scaling, fake structure or population interpolation.
+const large=makeHexGrowthState({N:401,dx:.75e-6,Tinf:258.15,sigmaInf:.10});
+assert.equal(large.activeSites,120601);
+assert.equal(auditHexDomain(large).domainUm,300);
+assert.ok(large.interior.length>110000);
+assert.equal(large.edges.length,1200);
+const t0=performance.now();
+resolvedHexGrowthStep(large,.5,{vaporIterations:22,heatIterations:22});
+const largeMs=performance.now()-t0;
+assert.equal(large.t,.5);
+assert.ok(large.lastBudget.interfaceCells>0);
+assert.ok(large.totalDepositedMass>0);
+assert.ok(Number.isFinite(large.lastBudget.maxDeltaT));
+assert.ok(large.sigma.every(Number.isFinite));
+assert.ok(large.dT.every(Number.isFinite));
+const bigContour=hexGrowthMorphology(large,720);
+assert.equal(bigContour.radius.length,720);
+assert.ok(bigContour.radius.every(x=>Number.isFinite(x)&&x>=0));
+assert.ok(Number.isFinite(bigContour.modes[6].relative));
+assert.ok(largeMs<15000,'large-grid 44 sweeps should remain bounded on CI runner');
+
+// Test an actual continuing 321 -> 401 grow, not a fresh new crystal.
+const medium=makeHexGrowthState({N:321,dx:.75e-6,sigmaInf:.08});
+medium.ice[(medium.R)*(medium.N)+medium.R+150]=1;
+medium.phi[(medium.R)*(medium.N)+medium.R+150]=1;
+const previous=auditHexDomain(medium);
+assert.ok(previous.haloCells<=12);
+const extended=enlargeHexDomain(medium,401);
+assert.equal(extended.N,401);
+assert.equal(extended.t,medium.t);
+assert.equal(extended.totalDepositedMass,medium.totalDepositedMass);
+assert.equal(extended.phi[extended.R*extended.N+extended.R+150],1);
+assert.ok(auditHexDomain(extended).haloCells>previous.haloCells);
+
 // Square-free mesh still has SIXFOLD GRID SYMMETRY. This is a numerical
 // property, not evidence that crystal sixfold morphology is physical.
 console.log('hex25d.test.mjs PASS',{
   sites:s.activeSites,sourceMassPg:mass*1e12,
   m4:m.modes[4].relative,m6:m.modes[6].relative,
-  haloBefore:near.haloCells,haloExpanded:auditHexDomain(expanded).haloCells
+  haloBefore:near.haloCells,haloExpanded:auditHexDomain(expanded).haloCells,
+  largeGridStepMs:Number(largeMs.toFixed(1)),largeSites:large.activeSites
 });

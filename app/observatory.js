@@ -26,7 +26,7 @@ const pg = x => x * 1e12;
 const STEPTIME = 0.5;
 const BASE_STEPS_PER_SECOND = 3;
 const MAX_SNAPSHOTS = 360;
-const MAX_STORED_GRID_CELLS=360*73*73; // bounded replay on larger grids
+const MAX_STORED_GRID_CELLS=360*73*73; // cap snapshot memory on 401² grids
 const DX=0.75e-6;
 const ids = ['temp','sigma','pressure','anisotropy','prism','basalA','seed','gridSize','sdak','capillarity','electricEnabled','electricCouple','eField','eAngle','epsIce','bendGradient','bendAngle','muFlexo'];
 const labels = [
@@ -96,7 +96,9 @@ function setPending(v) {
   pending=v; $('pending').hidden=!v;
 }
 function snap() {
-  const m=isHex()?hexGrowthMorphology(state,180):growthMorphology(state,180);
+  // 720 phase-derived radial samples resolve contour angles without making
+  // the 0.75 µm numerical solver falsely appear atomically resolved.
+  const m=isHex()?hexGrowthMorphology(state,720):growthMorphology(state,180);
   return {
     t:state.t, n:state.N, dx:state.dx, Tinf:state.Tinf,
     topology:state.topology||'square',mask:isHex()?new Uint8Array(state.mask):null,
@@ -122,7 +124,7 @@ function snap() {
 function current() {return frames[clamp(selectedIndex,0,frames.length-1)];}
 function capture() {
   frames.push(snap());
-  const historyLimit=Math.max(40,Math.min(MAX_SNAPSHOTS,Math.floor(MAX_STORED_GRID_CELLS/(state.N*state.N))));
+  const historyLimit=Math.max(8,Math.min(MAX_SNAPSHOTS,Math.floor(MAX_STORED_GRID_CELLS/(state.N*state.N))));
   if(frames.length>historyLimit)frames.shift();
   selectedIndex=frames.length-1;
   $('scrub').max=String(frames.length-1);
@@ -136,7 +138,10 @@ function reset(start=true) {
       if(next.electric.enabled||next.electric.coupleGrowth)
         throw new Error('Hexagonal experimental mesh does not support the electric Poisson model yet. Switch to Cartesian.');
       state=makeHexGrowthState(next);
-    }else state=makeGrowth25DState(next);
+    }else{
+      if(next.N>161)throw new Error('Cartesian A/B solver is limited to 120 µm; choose triangular for 300 µm.');
+      state=makeGrowth25DState(next);
+    }
     frames=[];replay=false;playing=start;accumulator=0;
     $('errorOverlay').hidden=true;
     setPending(false);
@@ -383,41 +388,84 @@ function hexRasterGeometry(s,can){
   const units=Math.min((can.width-32)/(2*R+2),(can.height-32)/(Math.sqrt(3)*R+2));
   return {unit:units,cx:can.width/2,cy:can.height/2,R};
 }
+/**
+ * Render the ACTUAL numerical fields as a high-resolution piecewise-linear
+ * scalar interpolation over equilateral triangles. This changes only the
+ * visualization, never the stored phase/flux or growth physics.
+ *
+ * The previous loop drew ~120k individual canvas polygon paths at 401²
+ * and produced jagged display cells. This is a bounded ~1024² pixel shader
+ * in plain Canvas ImageData with no per-pixel object allocations.
+ */
 function drawHexField(s,ctx,can,kind,values,scale,unit){
-  can.width=600;can.height=600;
-  const g=hexRasterGeometry(s,can),N=s.n;
-  const visible=[];
-  for(let k=0;k<N*N;k++)if(s.mask[k]&&
-    (kind==='occupancy'||!s.ice[k]))visible.push(kind==='occupancy'&&s.ice[k]?1:values[k]);
-  let lo=kind==='occupancy'?0:Math.min(...visible);
-  let hi=kind==='occupancy'?1:Math.max(...visible);
-  if(!Number.isFinite(lo)||!Number.isFinite(hi)){lo=0;hi=1;}
-  const den=Math.max(1e-10,hi-lo);
-  ctx.fillStyle='#071a28';ctx.fillRect(0,0,can.width,can.height);
-  // Draw actual Voronoi hexagons of triangular transport nodes, not a
-  // square heatmap with sixfold color applied after the solve.
-  const rad=g.unit/Math.sqrt(3)+.28;
-  for(let j=0;j<N;j++)for(let i=0;i<N;i++){
-    const k=j*N+i;if(!s.mask[k])continue;
-    const q=i-g.R,r=j-g.R;
-    const x=g.cx+g.unit*(q+r/2),y=g.cy-g.unit*(Math.sqrt(3)/2*r);
-    const value=kind==='occupancy'&&s.ice[k]?1:values[k];
-    const rgb=fieldColor((value-lo)/den,['vapor','temperature'].includes(kind)&&s.ice[k]);
-    ctx.fillStyle='rgb('+rgb.join(',')+')';
-    ctx.beginPath();
-    for(let t=0;t<6;t++){
-      const th=Math.PI/6+t*Math.PI/3,px=x+rad*Math.cos(th),py=y+rad*Math.sin(th);
-      if(t===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);
-    }
-    ctx.closePath();ctx.fill();
+  const resolution=Number($('fieldResolution').value);
+  if(![768,1024,1536].includes(resolution))throw new RangeError('Unsupported field pixel resolution');
+  if(can.width!==resolution||can.height!==resolution){
+    can.width=resolution;can.height=resolution;
   }
+  const N=s.n,g=hexRasterGeometry(s,can),mask=s.mask,phi=s.phi;
+  let lo=kind==='occupancy'?0:Infinity,hi=kind==='occupancy'?1:-Infinity;
+  if(kind!=='occupancy'){
+    for(let k=0;k<N*N;k++){
+      if(!mask[k]||(['vapor','temperature'].includes(kind)&&s.ice[k]))continue;
+      lo=Math.min(lo,values[k]);hi=Math.max(hi,values[k]);
+    }
+  }
+  if(!Number.isFinite(lo)||!Number.isFinite(hi)){lo=0;hi=1;}
+  const den=Math.max(1e-10,hi-lo),image=ctx.createImageData(resolution,resolution);
+  const dest=image.data,cx=g.cx,cy=g.cy,R=g.R,unitPx=g.unit;
+  const paletteTable=new Uint8Array(256*3);
+  for(let l=0;l<256;l++){
+    const rgb=fieldColor(l/255);
+    const offset=3*l;paletteTable[offset]=rgb[0];paletteTable[offset+1]=rgb[1];paletteTable[offset+2]=rgb[2];
+  }
+  const inv=1/unitPx,root3=Math.sqrt(3),root3Inv2=2/root3;
+  for(let py=0;py<resolution;py++){
+    const rf=(cy-py-.5)*inv*root3Inv2;
+    const r0=Math.floor(rf),v=rf-r0,row=r0+R;
+    for(let px=0;px<resolution;px++){
+      const o=(py*resolution+px)*4;
+      // Same affine coordinates and triangulation as sampleHexLinear().
+      const qf=(px+.5-cx)*inv-rf/2,q0=Math.floor(qf),u=qf-q0;
+      const col=q0+R;
+      let k0,k1,k2,w0,w1,w2;
+      if(col<0||row<0||col+1>=N||row+1>=N){
+        dest[o]=7;dest[o+1]=26;dest[o+2]=40;dest[o+3]=255;continue;
+      }
+      const base=row*N+col;
+      if(u+v<=1){
+        k0=base;k1=base+1;k2=base+N;
+        w0=1-u-v;w1=u;w2=v;
+      }else{
+        k0=base+N+1;k1=base+N;k2=base+1;
+        w0=u+v-1;w1=1-u;w2=1-v;
+      }
+      if(!mask[k0]||!mask[k1]||!mask[k2]){
+        dest[o]=7;dest[o+1]=26;dest[o+2]=40;dest[o+3]=255;continue;
+      }
+      const p=w0*phi[k0]+w1*phi[k1]+w2*phi[k2];
+      if(kind!=='occupancy'&&['vapor','temperature'].includes(kind)&&p>.20){
+        dest[o]=201;dest[o+1]=238;dest[o+2]=249;dest[o+3]=255;continue;
+      }
+      const val=kind==='occupancy'?p:
+        w0*values[k0]+w1*values[k1]+w2*values[k2];
+      const z=3*Math.max(0,Math.min(255,Math.round((val-lo)/den*255)));
+      dest[o]=paletteTable[z];dest[o+1]=paletteTable[z+1];dest[o+2]=paletteTable[z+2];dest[o+3]=255;
+    }
+  }
+  ctx.putImageData(image,0,0);
   $('fieldMin').textContent=num(lo*scale,3)+' '+unit;
   $('fieldMax').textContent=num(hi*scale,3)+' '+unit;
 }
+
 function drawField(s) {
   const can=$('fieldCanvas'),ctx=can.getContext('2d'),kind=$('field').value;
   if(!ctx)return;
   const N=s.n,{values,scale,unit}=fieldValues(s,kind);
+  can.style.imageRendering=s.topology==='triangular'?'auto':'pixelated';
+  $('fieldFidelity').textContent=s.topology==='triangular'
+    ?'PIECEWISE-LINEAR 2-D DISPLAY · '+$('fieldResolution').value+' px · SOLVER dx 0.75 µm':
+      'RAW CARTESIAN CELL RASTER · SOLVER dx 0.75 µm';
   if(s.topology==='triangular'){drawHexField(s,ctx,can,kind,values,scale,unit);return;}
   const data=[];
   for(let k=0;k<N*N;k++){
@@ -623,11 +671,16 @@ function topologyControls(){
     if(hex)$(name).checked=false;
     $(name).disabled=hex;
   }
+  for(const opt of $('gridSize').options){
+    opt.disabled=!hex&&Number(opt.value)>161;
+  }
+  if(!hex&&Number($('gridSize').value)>161)$('gridSize').value='161';
   for(const opt of $('field').options){
     if(['electric','potential'].includes(opt.value))opt.disabled=hex;
   }
   if(hex&&['electric','potential'].includes($('field').value))$('field').value='vapor';
   $('topologyValue').textContent=hex?'6-neighbor triangular':'9-point Cartesian';
+  formatControls();
 }
 function setupEvents(){
   formatControls();
@@ -635,6 +688,10 @@ function setupEvents(){
   topologyControls();
   $('topology').addEventListener('change',()=>{
     activeHabit='custom';topologyControls();setPending(true);
+  });
+  $('fieldResolution').addEventListener('change',()=>{
+    $('fieldResolutionValue').textContent=$('fieldResolution').value+' px';
+    if(current())drawField(current());
   });
   for(const [id] of labels)$(id).addEventListener('input',()=>{
     activeHabit='custom';formatControls();setPending(true);

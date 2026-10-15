@@ -56,7 +56,7 @@
         <section class="panel field-panel" aria-label="Spatial field slice">
           <div class="panel-top"><div><span class="index">02 / SPATIAL FIELDS</span><h2>Transport field <small>actual solver grid</small></h2></div><select id="field"><option value="vapor">Vapor excess u</option><option value="temperature">ΔT [K]</option><option value="occupancy">Ice fraction φ</option><option value="electric">Electric |E| [MV/m]</option><option value="potential">Electric potential [V]</option></select></div>
           <div class="field-wrap"><canvas id="fieldCanvas" aria-label="Solver field image"></canvas><div class="field-scale"><span id="fieldMin">—</span><div class="scale-gradient"></div><span id="fieldMax">—</span></div></div>
-          <div class="field-footer"><span id="fieldGeometry">SQUARE DIRICHLET FAR-FIELD · ARTIFACTS NEAR EDGES</span><span id="fieldInspect">HOVER FIELD TO INSPECT A CELL</span><span>GRID <b id="gridDim">—</b></span></div>
+          <div class="field-footer"><span id="fieldFidelity">SUBCELL INTERPOLATED DISPLAY · 0.75 µm MODEL SPACING</span><span id="fieldGeometry">SQUARE DIRICHLET FAR-FIELD · ARTIFACTS NEAR EDGES</span><span id="fieldInspect">HOVER FIELD TO INSPECT A CELL</span><span>GRID <b id="gridDim">—</b></span></div>
         </section>
         <section class="panel inspect-panel" aria-label="Physical interface budget">
           <div class="panel-top"><div><span class="index">03 / PHYSICS BUDGET</span><h2>Interface diagnostics</h2></div><span class="chip">MEASURED</span></div>
@@ -89,8 +89,14 @@
           <select id="topology"><option value="square">Cartesian · 9-point isotropic</option><option value="triangular">Triangular · 6-neighbor hexagonal cells (experimental)</option></select>
           <small>Triangles connect six equidistant neighbors; hexagons are their dual control volumes. Each site = 0.75 µm, not an atom.</small>
         </label>
-        <div class="toggles"><label><input id="autoExpand" type="checkbox" checked> Expand hex domain before the front reaches the boundary (up to 161²)</label></div>
-        <label class="parameter" for="gridSize"><span>Basal-plane domain <b id="gridSizeValue">73 × 73 · 54.0 µm</b></span><select id="gridSize"><option value="73">73² · 54 µm · fast</option><option value="97">97² · 72 µm</option><option value="129">129² · 96 µm · detailed</option><option value="161">161² · 120 µm · slower</option></select><small>dx = 0.75 µm; a larger domain postpones boundary effects but does not resolve molecular bonds or fix kinetic models</small></label>
+        <div class="toggles"><label><input id="autoExpand" type="checkbox" checked> Expand hex domain before the front reaches the boundary (up to 401² / 300 µm)</label></div>
+        <label class="parameter" for="fieldResolution"><span>Field display resolution <b id="fieldResolutionValue">1024 px</b></span>
+          <select id="fieldResolution"><option value="768">768 px · responsive</option><option value="1024" selected>1024 px · fine</option><option value="1536">1536 px · ultra</option></select>
+          <small>Sub-cell linear interpolation of actual numerical data. Higher display pixels are not new physical degrees of freedom.</small>
+        </label>
+        <label class="parameter" for="gridSize"><span>Basal-plane domain <b id="gridSizeValue">73 × 73 · 54.0 µm</b></span><select id="gridSize"><option value="73">73² · 54 µm · fast</option><option value="97">97² · 72 µm</option><option value="129">129² · 96 µm · detailed</option><option value="161">161² · 120 µm</option>
+          <option value="201">201² · 150 µm</option><option value="257">257² · 192 µm</option>
+          <option value="321">321² · 240 µm · advanced</option><option value="401">401² · 300 µm · demanding</option></select><small>dx = 0.75 µm; a larger domain postpones boundary effects but does not resolve molecular bonds or fix kinetic models</small></label>
         <div class="domain-report" id="domainReport" role="status" aria-live="polite"><b id="domainStatus">ASSESSING DOMAIN</b><span id="domainDetails">—</span></div>
         <div class="section-title">03 — FACET KINETICS</div>
         <label class="parameter" for="anisotropy"><span>Sixfold anisotropy <b id="anisotropyValue">0.18</b></span><input type="range" id="anisotropy" min="0" max=".70" step=".02" value=".18"><small>Azimuthal modulation: 1 + a cos(6θ)</small></label>

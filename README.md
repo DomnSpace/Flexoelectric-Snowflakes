@@ -45,6 +45,12 @@ The fixed 0.5-second model step and bounded 360-frame history make replay determ
 The source-level contract test verifies expected DOM bindings, real solver imports, and numerical snapshot fields. The existing numerical suite covers physical modules. Browser-level WebGL rendering and CDN retrieval still require verification on a modern Chromium browser. GitHub Actions runs syntax and Node tests on the feature branch and pull requests.
 
 
+## 300 µm live hex-domain / crisp field display
+
+[DOMAIN_300UM.md](DOMAIN_300UM.md) details the physically **300 µm** hexagonal domain (401 axial index width, 120,601 active sites at unchanged 0.75 µm spacing), optimized six-neighbor relaxation, the automatic domain ladder, bounded replay memory and 768/1024/1536-pixel *display-only* field interpolation.
+
+The basal-plane ice contour uses 720 phase-derived angular samples for the experimental hex mode, as opposed to the earlier 180, but the 3D rendering remains a basal contour extrusion, not a resolved 3D ice crystal. Larger arrays do not validate branching or replicate molecular hydrogen-bond geometry.
+
 ## Experimental 60° triangular transport grid
 
 [HEX_LATTICE.md](HEX_LATTICE.md) describes the optional six-neighbor triangular transport solver, true hexagonal Voronoi field visualization, automatic 73→97→129→161 hex-domain expansion without restarting the ice, and why neither this lattice nor oxygen/hydrogen molecular bond geometry automatically predicts six-armed snowflakes.
