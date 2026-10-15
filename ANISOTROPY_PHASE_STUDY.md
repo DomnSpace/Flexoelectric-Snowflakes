@@ -49,3 +49,19 @@ The comparisons do NOT assume 30° is better, and a negative spine/flank score i
 - Optical 5-layer plate views remain visualizations until we solve an independent local thickness / mass-transport equation.
 
 No 3-D rendering upgrade in this pass, to isolate the physics first.
+
+## Recorded controlled outcome (GitHub Actions, 2026-10-15)
+
+CI run `38714493140`, 97-index triangular lattice (72 µm domain), a=0.75 µm, T=−15 °C, ice supersaturation 10%, kinetic anisotropy 0.50, circular postcritical 1.5 µm seed, SDAK enabled, 36 steps of 0.5 s, weak surface stiffness ε=0, 24 vapor + 30 heat relaxations per step. All scenarios finished before the six-cell hard domain stop. The `m6` phase was **measured** from the resulting shape.
+
+| Kinetic phase | Deposited mass [pg] | m6 relative | m6 rotation | Spine minus flanks, fixed frame | Spine minus flanks, rotating with actual m6 | Outer 55–95% of arm in rotating frame | Halo [cells] |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 0° | 4.156264 | 0.082147 | 0° | +0.055134 | +0.055134 | +0.036461 | 15 |
+| 15° | 4.098312 | 0.085434 | −17.936° | −0.004829 | −0.024874 | +0.002292 | 12 |
+| 30° | 4.075898 | 0.124969 | −30° | −0.051594 | **+0.098136** | **+0.161197** | 10 |
+
+**Interpretation:** comparing the 30° result on the original X axis incorrectly reports a hollow center simply because the sixfold arms have rotated. When sampling along the actually grown arm orientations, the 30° case instead has a stronger central spine compared with the two ±10° flanks, including in the outer tip region. This **supports**, but does not establish, the proposed 30° correction for this one early-time model regime. At 30° the leading arms also approach the finite Dirichlet boundary sooner (halo 10 vs 15), so subsequent comparisons require larger domains and transport convergence before drawing general conclusions.
+
+The zero-anisotropy 0° and 30° phase fields were bitwise identical; switching phase does not inject a hidden forcing. Independent low-amplitude surface-energy anisotropy produced a real change to the phase field.
+
+No random forcing, empirical fitted coefficients, electric-field coupling, mass-creating visualization, geometry postprocessing, or fixed six-spoke skeleton was introduced into the transport solver.
