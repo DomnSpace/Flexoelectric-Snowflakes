@@ -67,6 +67,8 @@
             <div><dt>Local interface cells</dt><dd id="bCells">—</dd></div>
             <div><dt>Curvature (mean)</dt><dd id="bCurve">—</dd></div>
             <div><dt>Capillary exponent (mean)</dt><dd id="bCap">—</dd></div>
+            <div><dt>Crystal kinetic phase</dt><dd id="bPhase">—</dd></div>
+            <div><dt>Relative capillary stiffness ε</dt><dd id="bStiffness">—</dd></div>
             <div><dt>Mass flux rate</dt><dd id="bFlux">—</dd></div>
             <div><dt>Peak electric field</dt><dd id="bEField">—</dd></div>
             <div><dt>Imposed flexoelectric polarization</dt><dd id="bPolar">—</dd></div>
@@ -99,11 +101,16 @@
           <option value="321">321² · 240 µm · advanced</option><option value="401">401² · 300 µm · demanding</option></select><small>dx = 0.75 µm; a larger domain postpones boundary effects but does not resolve molecular bonds or fix kinetic models</small></label>
         <div class="domain-report" id="domainReport" role="status" aria-live="polite"><b id="domainStatus">ASSESSING DOMAIN</b><span id="domainDetails">—</span></div>
         <div class="section-title">03 — FACET KINETICS</div>
-        <label class="parameter" for="anisotropy"><span>Sixfold anisotropy <b id="anisotropyValue">0.18</b></span><input type="range" id="anisotropy" min="0" max=".70" step=".02" value=".18"><small>Azimuthal modulation: 1 + a cos(6θ)</small></label>
+        <label class="parameter" for="anisotropy"><span>Sixfold kinetic anisotropy <b id="anisotropyValue">0.18</b></span><input type="range" id="anisotropy" min="0" max=".70" step=".02" value=".18"><small>Factor: 1 + a cos(6(θ−φ)); θ = local outward interface normal, NOT radial arm angle.</small></label>
+        <label class="parameter" for="kineticPhase"><span>Crystal / kinetic phase <b id="kineticPhaseValue">0°</b></span><select id="kineticPhase"><option value="0">0° · original orientation</option><option value="15">15° · intermediate control</option><option value="30">30° · swapped maxima/minima</option></select><small>Controlled orientation test; 30° does not automatically stabilize dendrite spines.</small></label>
+        <label class="parameter" for="surfaceEpsilon"><span>Surface-energy anisotropy ε <b id="surfaceEpsilonValue">0.000</b></span><select id="surfaceEpsilon"><option value="0">0 · isotropic capillarity</option><option value=".01">0.010 · weak positive stiffness</option><option value=".02">0.020 · stronger positive stiffness</option></select><small>γ+γ″ = γ₀[1−35ε cos(6(θ−φ))]; beyond |ε|≈0.0286 requires facet regularization.</small></label>
+        <label class="parameter" for="seedShape"><span>Crystal seed <b id="seedShapeValue">Circular</b></span><select id="seedShape"><option value="circle">Circle · unbiased seed</option><option value="hex">Hexagonal facet seed</option></select><small>Physical initial occupancy; not a drawn six-armed output template.</small></label>
+        <label class="parameter" for="seedPhase"><span>Hex seed vertex azimuth <b id="seedPhaseValue">0°</b></span><select id="seedPhase"><option value="0">0° · vertex along X</option><option value="15">15° · rotated control</option><option value="30">30° · facet along X</option></select><small>Independent seed orientation for diagnosing mesh locking.</small></label>
         <label class="parameter" for="prism"><span>Prism nucleation barrier <b id="prismValue">0.0030</b></span><input type="range" id="prism" min=".0005" max=".02" step=".0005" value=".003"><small>σ₀ in α = A exp(−σ₀ / σ_surface)</small></label>
         <label class="parameter" for="basalA"><span>Basal attachment prefactor <b id="basalAValue">0.009</b></span><input type="range" id="basalA" min="0.001" max=".1" step=".001" value=".009"><small>Uncalibrated facet accommodation A; controls out-of-plane thickness</small></label>
         <label class="parameter" for="seed"><span>Initial seed radius <b id="seedValue">1.5 µm</b></span><input type="range" id="seed" min="1" max="4" step=".25" value="1.5"><small>Postcritical ice seed; not nucleation</small></label>
         <div class="toggles"><label><input id="sdak" type="checkbox"> SDAK / edge enhancement</label><label><input id="capillarity" type="checkbox" checked> Gibbs–Thomson curvature</label><label><input id="rotate" type="checkbox" checked> Turntable camera</label></div>
+        <div class="notice">ANISOTROPY EXPERIMENT: kinetic phase and capillary stiffness are separate contributions. 0°/30° comparison can expose axial tip splitting; neither setting is calibrated ice Ih surface data. Hex-only controls; Cartesian electric solver remains independent.</div>
         <div class="section-title">04 — ELECTROSTATIC EXPERIMENT</div>
         <div class="toggles"><label><input id="electricEnabled" type="checkbox"> Solve ∇·D = 0</label><label><input id="electricCouple" type="checkbox"> Apply dielectric-energy growth closure (approximate)</label></div>
         <label class="parameter" for="eField"><span>Far-field magnitude <b id="eFieldValue">2.0 MV/m</b></span><input type="range" id="eField" min="0" max="10" step=".25" value="2"><small>High-field laboratory scenario, not natural weather</small></label>
