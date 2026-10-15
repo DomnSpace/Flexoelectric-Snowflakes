@@ -25,6 +25,11 @@ close(s.area,Math.sqrt(3)/2*s.dx*s.dx,1e-27);
 assert.ok(layeredExplicitDtLimit(s)>0);
 assert.equal(s.heatTransportSolved,false);
 assert.equal(s.interfaceMotionSolved,false);
+const separateBoundary=createLayeredGasFV({...base,surfaceEquilibriumKgM3:0});
+assert.ok(separateBoundary.c[layeredGasIndex(separateBoundary,0,0,4)]>0,
+  'changing ice-surface equilibrium must not erase the independent atmospheric vapor inventory');
+assert.equal(separateBoundary.ceq,0);
+
 assert.throws(()=>createLayeredGasFV({...base,N:8}),/odd basal/);
 assert.throws(()=>createLayeredGasFV({...base,iceCells:[{q:0,r:0,z:0}]}),/eligible/);
 
