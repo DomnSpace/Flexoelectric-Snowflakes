@@ -33,7 +33,7 @@ The numerical test `app/tests/anisotropy-phase.test.mjs` verifies:
 - sixfold surface-stiffness bounds and rejection of unrealistically strong unregularized epsilon;
 - physical seed occupation counts differ for circular vs hexagonal seeds of the same circumradius;
 - 0°/15°/30° runs for otherwise identical temperature, supersaturation, seed, lattice and timestep;
-- a **measured** center-ray minus ±10° flank phase-occupancy diagnostic at six crystal axes. Its sign is a split-spine indicator, **not** proof of branching mechanism or natural crystal morphology;
+- a **measured** center-ray minus ±10° flank phase-occupancy diagnostic both on fixed laboratory axes and on each run's independently measured *sixfold morphology orientation* (including the outer 55–95% of the growth arm). Comparing 30° results only on the fixed laboratory axes would mistake a rotated intact arm for a split arm. Negative aligned tip score is a possible splitter indicator, **not** proof of mechanism or natural crystal morphology;
 - opt-in nonzero surface-energy anisotropy changes numerical deposition.
 
 The comparisons do NOT assume 30° is better, and a negative spine/flank score is not treated as a failed test. The CI logs print outcomes for every phase. This is precisely why we **must not** merely flip the angular anisotropy sign without observing the resulting growth.
