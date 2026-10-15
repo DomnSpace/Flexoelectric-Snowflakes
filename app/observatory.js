@@ -347,7 +347,7 @@ function viewTop(){
 }
 function updateMesh(s) {
   if(!crystal)return;
-  if(mesh){crystal.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();}
+  if(mesh){crystal.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();mesh=null;}
   if(edge){crystal.remove(edge);edge.geometry.dispose();edge.material.dispose();edge=null;}
   if(layerGroup){crystal.remove(layerGroup);disposeLayerGroup(layerGroup);layerGroup=null;}
   // Render-only selection: the same versioned snapshot and solved ice outline.
