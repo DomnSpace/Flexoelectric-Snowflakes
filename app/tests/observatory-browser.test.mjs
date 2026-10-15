@@ -73,7 +73,7 @@ try{
   await page.locator('#habit').selectOption('plate');
   await page.locator('#preset').click();
   assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),97);
-  assert.equal(await page.locator('#basalA').inputValue(),'.009');
+  assert.equal(Number(await page.locator('#basalA').inputValue()),.009);
   assert.match(await page.locator('#domainStatus').innerText(),/VALIDITY|CAUTION/);
   assert.equal(await page.locator('#errorOverlay').isVisible(),false);
   await mkdir(resolve('artifacts'),{recursive:true});
