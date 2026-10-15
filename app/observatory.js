@@ -6,6 +6,8 @@ import {
 } from './solver/growth25d.js';
 import {GROWTH_HABITS, GRID_CHOICES, auditGrowthDomain, modelDomainUm} from './solver/habits25d.js';
 import {saturationVaporPressureWaterMK, saturationVaporPressureIceMK} from './solver/thermo.js';
+import {makeHexGrowthState,resolvedHexGrowthStep,hexGrowthMorphology,
+  auditHexDomain,enlargeHexDomain,hexCellAtXY} from './solver/hex25d.js';
 
 /*
  * Snowflake Observatory
@@ -46,6 +48,8 @@ const labels = [
 const palette = ['#8de0ff','#b7a9ff','#f9cb8b','#72d8b7','#ff9da5','#e8efff'];
 let state, frames=[], selectedIndex=0, replay=false, playing=true, pending=false;
 let activeHabit='custom';
+const isHex=()=>state?.topology==='triangular';
+const auditState=()=>isHex()?auditHexDomain(state):auditGrowthDomain(state);
 let lastFrame=performance.now(), accumulator=0, mesh=null, edge=null, worldScale=1;
 let scene, camera, controls, renderer, crystal, snowLight;
 let drawCanvas;
@@ -92,9 +96,11 @@ function setPending(v) {
   pending=v; $('pending').hidden=!v;
 }
 function snap() {
-  const m=growthMorphology(state,180);
+  const m=isHex()?hexGrowthMorphology(state,180):growthMorphology(state,180);
   return {
     t:state.t, n:state.N, dx:state.dx, Tinf:state.Tinf,
+    topology:state.topology||'square',mask:isHex()?new Uint8Array(state.mask):null,
+    expansions:state.domainExpansions||0,
     u:new Float32Array(state.sigma), dT:new Float32Array(state.dT),
     phi:new Float32Array(state.phi), ice:new Uint8Array(state.ice),
     ePotential:state.electric?new Float32Array(state.electric.potential):null,
@@ -108,7 +114,7 @@ function snap() {
       modes:{4:{...m.modes[4]},6:{...m.modes[6]},12:{...m.modes[12]}}
     },
     budget:state.lastBudget?{...state.lastBudget}:null,
-    audit:auditGrowthDomain(state),habit:activeHabit,
+    audit:auditState(),habit:activeHabit,
     waterSaturationPercent:cloudSaturationSigma(state.Tinf-273.15)*100,
     deposited:state.totalDepositedMass, energy:state.totalLatentHeat
   };
@@ -126,7 +132,11 @@ function reset(start=true) {
   try {
     const next=config();
     if(!GRID_CHOICES.includes(next.N))throw new RangeError('Grid size is not an approved resolution');
-    state=makeGrowth25DState(next);
+    if($('topology').value==='triangular'){
+      if(next.electric.enabled||next.electric.coupleGrowth)
+        throw new Error('Hexagonal experimental mesh does not support the electric Poisson model yet. Switch to Cartesian.');
+      state=makeHexGrowthState(next);
+    }else state=makeGrowth25DState(next);
     frames=[];replay=false;playing=start;accumulator=0;
     $('errorOverlay').hidden=true;
     setPending(false);
@@ -134,7 +144,8 @@ function reset(start=true) {
     const selected=GROWTH_HABITS[activeHabit];
     $('scenario').textContent=(selected?.supported?selected.name.toUpperCase():'CUSTOM EXPERIMENT')+
       ' · '+num(Number($('temp').value),0)+' °C / '+num(Number($('sigma').value),1)+' %';
-    $('electricReadout').textContent=state.electric?(state.electric.params.coupleGrowth?'POISSON + DIELECTRIC GROWTH':'POISSON / DIAGNOSTIC ONLY'):'DISABLED';
+    $('electricReadout').textContent=isHex()?'NOT COUPLED TO TRIANGULAR MESH':
+      state.electric?(state.electric.params.coupleGrowth?'POISSON + DIELECTRIC GROWTH':'POISSON / DIAGNOSTIC ONLY'):'DISABLED';
     $('play').textContent=start?'❚❚ Pause':'▶ Play';
     $('live').classList.add('active');
   } catch(e) { fail(e); }
@@ -148,15 +159,27 @@ function fail(e) {
 }
 function advance() {
   if(!state)return;
-  const audit=auditGrowthDomain(state);
-  if(audit.stop){
+  try{
+    // Preserve the grown ice, time, vapor fields and cumulative budgets when
+    // expanding the experimental hex mesh (no restart or fake second seed).
+    if(isHex()&&$('autoExpand').checked){
+      const options=GRID_CHOICES, index=options.indexOf(state.N);
+      if(index>=0&&index<options.length-1&&auditHexDomain(state).haloCells<=12){
+        state=enlargeHexDomain(state,options[index+1]);
+        $('gridSize').value=String(state.N);
+        formatControls();
+        $('fieldInspect').textContent='HEX DOMAIN GROWN · '+state.domainExpansions+' EXPANSIONS';
+      }
+    }
+    const audit=auditState();
+    if(audit.stop){
     playing=false;$('play').textContent='▶ Play';
     setStatus('MODEL DOMAIN STOP · '+audit.reason);
     return;
-  }
-  try{
-    // No fabricated growth between steps: each snapshot follows a real solver step.
-    resolvedGrowthStep(state,STEPTIME,{vaporIterations:45,heatIterations:55});
+    }
+    // Each model frame advances exactly one resolved transport + deposition step.
+    if(isHex())resolvedHexGrowthStep(state,STEPTIME,{vaporIterations:45,heatIterations:55});
+    else resolvedGrowthStep(state,STEPTIME,{vaporIterations:45,heatIterations:55});
     capture();sync();
     const d=current().audit;
     if(d.stop){
@@ -168,7 +191,7 @@ function advance() {
   } catch(e) {fail(e);}
 }
 function play() {
-  if(state&&auditGrowthDomain(state).stop){
+  if(state&&auditState().stop&&!(isHex()&&$('autoExpand').checked&&GRID_CHOICES.indexOf(state.N)<GRID_CHOICES.length-1)){
     playing=false;setStatus('MODEL DOMAIN STOP · CHANGE DOMAIN OR PARAMETERS AND RESTART');return;
   }
   if(replay){replay=false;selectedIndex=frames.length-1;$('scrub').value=String(selectedIndex);}
@@ -188,7 +211,12 @@ function sync() {
   $('sizeLabel').textContent=num((s.n-1)*s.dx*1e6,1)+' µm DOMAIN · '+s.n+'²';
   $('stepLabel').textContent='STEP '+String(Math.round(s.t/STEPTIME)).padStart(4,'0');
   $('scrubTime').textContent='t = '+num(s.t,1)+' s';
-  $('gridDim').textContent=s.n+'×'+s.n;
+  $('gridDim').textContent=s.topology==='triangular'
+    ?Math.round(1+3*((s.n-1)/2)*((s.n+1)/2))+' HEX CELLS':s.n+'×'+s.n;
+  $('fieldGeometry').textContent=s.topology==='triangular'
+    ?'TRIANGULAR TRANSPORT / HEX VORONOI · FINITE HEX BOUNDARY SELECTS m6':
+    'SQUARE DIRICHLET FAR-FIELD · ARTIFACTS NEAR EDGES';
+  $('topologyValue').textContent=s.topology==='triangular'?'6-neighbor triangular':'9-point Cartesian';
   $('live').classList.toggle('active',!replay);
   updateBudget(s);
   updateDomain(s);
@@ -202,7 +230,7 @@ function updateDomain(s) {
   $('domainStatus').textContent=label;
   $('domainDetails').textContent='TIP '+num(d.tipRadiusUm,1)+' µm · HALO '+num(d.haloUm,1)+
     ' µm ('+d.haloCells+' cells) · THICKNESS '+num(d.thicknessUm,1)+
-    ' µm · h/r '+num(d.plateRatio,2)+' · '+d.reason;
+    ' µm · h/r '+num(d.plateRatio,2)+' · '+d.reason+(s.topology==='triangular'?' · EXTENSIONS '+s.expansions:'');
   $('domainReport').classList.toggle('domain-stop',d.stop);
   $('domainReport').classList.toggle('domain-warning',d.warning&&!d.stop);
   $('validity').textContent=d.stop?'STOP · INVALID':d.warning?'WARNING':'MONITORING';
@@ -333,7 +361,8 @@ function updateMesh(s) {
   const maxRadius=Math.max(3.2,um(s.morph.equivalentBasalRadius)*1.5);
   worldScale=2.5/maxRadius;
   crystal.scale.setScalar(worldScale);
-  $('viewLabel').textContent='2.5-D UNIFORM-THICKNESS EXTRUSION · '+num(depth,2)+' µm';
+  $('viewLabel').textContent=(s.topology==='triangular'?'TRIANGULAR-LATTICE · ':'')+
+    '2.5-D EXTRUSION · '+num(depth,2)+' µm';
 }
 
 function fieldColor(t,ice=false) {
@@ -349,10 +378,47 @@ function fieldValues(s,kind) {
   if(kind==='electric')return {values:s.eMagnitude||new Float32Array(s.n*s.n),unit:'MV/m',scale:1e-6};
   return {values:s.u,unit:'%',scale:100};
 }
+function hexRasterGeometry(s,can){
+  const R=(s.n-1)/2;
+  const units=Math.min((can.width-32)/(2*R+2),(can.height-32)/(Math.sqrt(3)*R+2));
+  return {unit:units,cx:can.width/2,cy:can.height/2,R};
+}
+function drawHexField(s,ctx,can,kind,values,scale,unit){
+  can.width=600;can.height=600;
+  const g=hexRasterGeometry(s,can),N=s.n;
+  const visible=[];
+  for(let k=0;k<N*N;k++)if(s.mask[k]&&
+    (kind==='occupancy'||!s.ice[k]))visible.push(kind==='occupancy'&&s.ice[k]?1:values[k]);
+  let lo=kind==='occupancy'?0:Math.min(...visible);
+  let hi=kind==='occupancy'?1:Math.max(...visible);
+  if(!Number.isFinite(lo)||!Number.isFinite(hi)){lo=0;hi=1;}
+  const den=Math.max(1e-10,hi-lo);
+  ctx.fillStyle='#071a28';ctx.fillRect(0,0,can.width,can.height);
+  // Draw actual Voronoi hexagons of triangular transport nodes, not a
+  // square heatmap with sixfold color applied after the solve.
+  const rad=g.unit/Math.sqrt(3)+.28;
+  for(let j=0;j<N;j++)for(let i=0;i<N;i++){
+    const k=j*N+i;if(!s.mask[k])continue;
+    const q=i-g.R,r=j-g.R;
+    const x=g.cx+g.unit*(q+r/2),y=g.cy-g.unit*(Math.sqrt(3)/2*r);
+    const value=kind==='occupancy'&&s.ice[k]?1:values[k];
+    const rgb=fieldColor((value-lo)/den,['vapor','temperature'].includes(kind)&&s.ice[k]);
+    ctx.fillStyle='rgb('+rgb.join(',')+')';
+    ctx.beginPath();
+    for(let t=0;t<6;t++){
+      const th=Math.PI/6+t*Math.PI/3,px=x+rad*Math.cos(th),py=y+rad*Math.sin(th);
+      if(t===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);
+    }
+    ctx.closePath();ctx.fill();
+  }
+  $('fieldMin').textContent=num(lo*scale,3)+' '+unit;
+  $('fieldMax').textContent=num(hi*scale,3)+' '+unit;
+}
 function drawField(s) {
   const can=$('fieldCanvas'),ctx=can.getContext('2d'),kind=$('field').value;
   if(!ctx)return;
   const N=s.n,{values,scale,unit}=fieldValues(s,kind);
+  if(s.topology==='triangular'){drawHexField(s,ctx,can,kind,values,scale,unit);return;}
   const data=[];
   for(let k=0;k<N*N;k++){
     if(['occupancy','electric','potential'].includes(kind))data.push(kind==='occupancy'&&s.ice[k]?1:values[k]);
@@ -376,11 +442,21 @@ function drawField(s) {
 function onFieldMove(evt) {
   const s=current();if(!s)return;
   const r=evt.currentTarget.getBoundingClientRect(),N=s.n;
-  const i=clamp(Math.floor((evt.clientX-r.left)/r.width*N),0,N-1);
-  const j=clamp(Math.floor((evt.clientY-r.top)/r.height*N),0,N-1);
-  const k=j*N+i;
-  const c=(N-1)/2;
-  $('fieldInspect').textContent='x '+num((i-c)*um(s.dx),1)+' µm · y '+num((j-c)*um(s.dx),1)+' µm · u '+num(s.u[k]*100,3)+' % · ΔT '+num(s.dT[k]*1000,2)+' mK · φ '+num(s.ice[k]?1:s.phi[k],2)+
+  let i,j,k,x,y;
+  if(s.topology==='triangular'){
+    const can=evt.currentTarget,g=hexRasterGeometry(s,can);
+    const px=(evt.clientX-r.left)/r.width*can.width,py=(evt.clientY-r.top)/r.height*can.height;
+    x=(px-g.cx)/g.unit*s.dx;y=-(py-g.cy)/g.unit*s.dx;
+    k=hexCellAtXY({N:s.n,R:g.R,dx:s.dx,mask:s.mask},x,y);
+    if(k<0){$('fieldInspect').textContent='OUTSIDE HEXAGONAL TRANSPORT DOMAIN';return;}
+    i=k%N;j=Math.floor(k/N);
+  }else{
+    i=clamp(Math.floor((evt.clientX-r.left)/r.width*N),0,N-1);
+    j=clamp(Math.floor((evt.clientY-r.top)/r.height*N),0,N-1);
+    k=j*N+i;const c=(N-1)/2;
+    x=(i-c)*s.dx;y=(j-c)*s.dx;
+  }
+  $('fieldInspect').textContent='x '+num(um(x),1)+' µm · y '+num(um(y),1)+' µm · u '+num(s.u[k]*100,3)+' % · ΔT '+num(s.dT[k]*1000,2)+' mK · φ '+num(s.ice[k]?1:s.phi[k],2)+
   (s.eEnabled?' · |E| '+num(s.eMagnitude[k]*1e-6,3)+' MV/m · V '+num(s.ePotential[k],3)+' V':'');
 }
 
@@ -447,7 +523,10 @@ function radialSeries(s){
     for(let k=0;k<points;k++){
       const r=maxR*k/(points-1),i=clamp(Math.round(center+r*Math.cos(theta)/s.dx),0,s.n-1);
       const j=clamp(Math.round(center+r*Math.sin(theta)/s.dx),0,s.n-1);
-      out.push([um(r),100*s.u[j*s.n+i]]);
+      const sampleIndex=s.topology==='triangular'?
+        hexCellAtXY({N:s.n,R:center,dx:s.dx,mask:s.mask},
+          r*Math.cos(theta),r*Math.sin(theta)):j*s.n+i;
+      if(sampleIndex>=0)out.push([um(r),100*s.u[sampleIndex]]);
     }
     radials.push({color:palette[arm],points:out,width:1.55});
   }
@@ -475,7 +554,8 @@ function download(name,type,data) {
 function downloadCsv(){
   const columns=['time_s','radius_um','mean_radius_um','half_thickness_um','deposited_mass_pg','latent_energy_J','max_dT_mK','m4_relative','m6_relative','m12_relative','mean_interface_sigma','mean_prism_alpha','alpha_basal','interface_cells','mass_rate_pg_s','basal_velocity_um_s','mean_curvature_per_um','mean_capillary_exponent',
     'max_electric_field_MV_m','flexoelectric_P_uC_m2','mean_dielectric_log_shift','poisson_residual_V','electric_coupled',
-    'domain_um','tip_radius_um','halo_cells','thickness_um','halfthickness_over_tipradius','domain_stop','water_saturation_ice_percent','habit'];
+    'domain_um','tip_radius_um','halo_cells','thickness_um','halfthickness_over_tipradius','domain_stop','water_saturation_ice_percent','habit',
+    'topology','domain_expansions'];
   const rows=[columns.join(',')];
   for(const s of frames){
     const b=s.budget||{},m=s.morph;
@@ -486,7 +566,7 @@ function downloadCsv(){
       s.eDiagnostics?s.eDiagnostics.maxFieldVM*1e-6:'',s.eDiagnostics?s.eDiagnostics.maxPolarization*1e6:'',
       b.meanElectricLogShift??0,s.eDiagnostics?.residualRmsV??'',s.eCoupled?1:0,
       s.audit.domainUm,s.audit.tipRadiusUm,s.audit.haloCells,s.audit.thicknessUm,s.audit.plateRatio,
-      s.audit.stop?1:0,s.waterSaturationPercent,s.habit];
+      s.audit.stop?1:0,s.waterSaturationPercent,s.habit,s.topology,s.expansions];
     rows.push(values.map(v=>v??'').join(','));
   }
   download('snowflake-observatory-'+new Date().toISOString().slice(0,10)+'.csv','text/csv;charset=utf-8',rows.join('\r\n')+'\r\n');
@@ -532,11 +612,30 @@ function loadSelectedHabit(){
   // Weather scenarios are neutral; electric forcing is a separate experiment.
   $('electricEnabled').checked=false;$('electricCouple').checked=false;
   $('eField').value='2';$('bendGradient').value='0';
+  $('topology').value='triangular';topologyControls();
   activeHabit=key;formatControls();reset(true);describeSelectedHabit();
+}
+function topologyControls(){
+  const hex=$('topology').value==='triangular';
+  // The Poisson module is currently discretized on the Cartesian grid.
+  // Do not pretend it solves on the triangular mesh.
+  for(const name of ['electricEnabled','electricCouple']){
+    if(hex)$(name).checked=false;
+    $(name).disabled=hex;
+  }
+  for(const opt of $('field').options){
+    if(['electric','potential'].includes(opt.value))opt.disabled=hex;
+  }
+  if(hex&&['electric','potential'].includes($('field').value))$('field').value='vapor';
+  $('topologyValue').textContent=hex?'6-neighbor triangular':'9-point Cartesian';
 }
 function setupEvents(){
   formatControls();
   describeSelectedHabit();
+  topologyControls();
+  $('topology').addEventListener('change',()=>{
+    activeHabit='custom';topologyControls();setPending(true);
+  });
   for(const [id] of labels)$(id).addEventListener('input',()=>{
     activeHabit='custom';formatControls();setPending(true);
   });

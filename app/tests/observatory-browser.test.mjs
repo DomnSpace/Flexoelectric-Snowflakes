@@ -15,7 +15,9 @@ try{
   page.on('console',msg=>{if(msg.type()==='error')errors.push(msg.text());});
   await page.goto('http://127.0.0.1:8088/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>document.querySelector('#status')?.textContent!=='INITIALIZING PHYSICS',{timeout:45000});
-  assert.equal(await page.locator('#errorOverlay').isVisible(),false,'3D/solver error overlay must be hidden');
+  assert.equal(await page.locator('#errorOverlay').isVisible(),false,
+    '3D/solver error overlay must be hidden: '+await page.locator('#errorOverlay').innerText()+
+    ' / console: '+errors.join(' | '));
   assert.match(await page.locator('#status').innerText(),/SOLVER RUNNING/);
   assert.equal(await page.locator('#viewport canvas').count(),1,'WebGL canvas mounted');
   assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),73,'numeric field raster');
@@ -59,8 +61,18 @@ try{
   // Preset switches are observational hypotheses, not geometry shortcuts.
   await page.locator('#habit').selectOption('dendrite');
   await page.locator('#preset').click();
-  assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),129,
-    'dendritic experiment uses a larger solver field, not zoom');
+  assert.equal(await page.locator('#topology').inputValue(),'triangular');
+  assert.equal(await page.locator('#gridSize').inputValue(),'129');
+  assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),600,
+    'hex field draws actual Voronoi cells, not an N×N square raster');
+  assert.match(await page.locator('#fieldGeometry').innerText(),/TRIANGULAR TRANSPORT/);
+  assert.match(await page.locator('#gridDim').innerText(),/HEX CELLS/);
+  assert.equal(await page.locator('#electricEnabled').isDisabled(),true,
+    'Poisson solver is not falsely claimed to support hex mesh');
+  await page.locator('#play').click();
+  const hexT0=parseFloat(await page.locator('#kTime').innerText());
+  await page.locator('#step').click();
+  assert.ok(parseFloat(await page.locator('#kTime').innerText())>hexT0,'actual hex physics advances');
   assert.match(await page.locator('#scenario').innerText(),/STELLAR DENDRITE CANDIDATE/);
   assert.match(await page.locator('#waterLimit').innerText(),/above ice/);
   assert.match(await page.locator('#domainDetails').innerText(),/HALO/);
@@ -72,9 +84,19 @@ try{
   assert.match(await page.locator('#habitNote').innerText(),/not simulated/i);
   await page.locator('#habit').selectOption('plate');
   await page.locator('#preset').click();
-  assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),97);
+  assert.equal(await page.locator('#gridSize').inputValue(),'97');
+  assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),600);
+  assert.equal(await page.locator('#topology').inputValue(),'triangular');
   assert.equal(Number(await page.locator('#basalA').inputValue()),.009);
   assert.match(await page.locator('#domainStatus').innerText(),/VALIDITY|CAUTION/);
+  assert.equal(await page.locator('#errorOverlay').isVisible(),false);
+  await page.locator('#topology').selectOption('square');
+  await page.locator('#apply').click();
+  assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),97,
+    'Cartesian baseline remains independently functional for A/B tests');
+  assert.equal(await page.locator('#electricEnabled').isDisabled(),false);
+  await page.locator('#topology').selectOption('triangular');
+  await page.locator('#apply').click();
   assert.equal(await page.locator('#errorOverlay').isVisible(),false);
   await mkdir(resolve('artifacts'),{recursive:true});
   await page.screenshot({path:'artifacts/snowflake-observatory.png',fullPage:true,animations:'disabled'});

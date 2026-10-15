@@ -45,6 +45,14 @@ The fixed 0.5-second model step and bounded 360-frame history make replay determ
 The source-level contract test verifies expected DOM bindings, real solver imports, and numerical snapshot fields. The existing numerical suite covers physical modules. Browser-level WebGL rendering and CDN retrieval still require verification on a modern Chromium browser. GitHub Actions runs syntax and Node tests on the feature branch and pull requests.
 
 
+## Experimental 60° triangular transport grid
+
+[HEX_LATTICE.md](HEX_LATTICE.md) describes the optional six-neighbor triangular transport solver, true hexagonal Voronoi field visualization, automatic 73→97→129→161 hex-domain expansion without restarting the ice, and why neither this lattice nor oxygen/hydrogen molecular bond geometry automatically predicts six-armed snowflakes.
+
+Use the **Numerical transport lattice** selector to compare the existing Cartesian nine-point scheme with the new triangular six-neighbor scheme. Press **Apply / restart**, or load one of the 2.5-D plate/dendrite candidate habits (which now select triangular transport by default). The electric Poisson experiment remains Cartesian-only; it is disabled and explicitly identified as unavailable in triangular mode. For honest comparisons, inspect both m4 and m6 and vary kinetic anisotropy, domain size and site spacing.
+
+The hex solver is an **experimental alternate 2.5-D model**, not calibrated molecular simulation or proof of sixfold morphological instability. Its adaptive boundary still imposes a finite, hexagonal Dirichlet far field.
+
 ## Grounded habit scenarios / numerical validity
 
 See [SCENARIO_VALIDITY.md](SCENARIO_VALIDITY.md) for the literature basis, exact temperature/supersaturation presets, adjustable solver-domain geometry, basal-thickness warnings, finite-domain stop conditions and **limitations that prevent any guarantee of dendrites**.
