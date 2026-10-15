@@ -42,7 +42,8 @@ export const GROWTH_HABITS=Object.freeze({
     limitation:'This basal-plane 2.5-D solver has no vertical vapor/thermal PDE, column tip, or facet-resolved 3-D growth. No needle preset is simulated.'
   })
 });
-export const GRID_CHOICES=Object.freeze([73,97,129,161]);
+// 401 nodes at 0.75 µm spacing = 300 µm physical vertex-to-vertex domain.
+export const GRID_CHOICES=Object.freeze([73,97,129,161,201,257,321,401]);
 export function modelDomainUm(N,dx){return (N-1)*dx*1e6;}
 
 /**
