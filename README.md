@@ -45,6 +45,10 @@ The fixed 0.5-second model step and bounded 360-frame history make replay determ
 The source-level contract test verifies expected DOM bindings, real solver imports, and numerical snapshot fields. The existing numerical suite covers physical modules. Browser-level WebGL rendering and CDN retrieval still require verification on a modern Chromium browser. GitHub Actions runs syntax and Node tests on the feature branch and pull requests.
 
 
+## Pass 7 — Versioned ice snapshots and five transparent layers
+
+[PASS7_STATE_AND_LAYERS.md](PASS7_STATE_AND_LAYERS.md) describes the versioned SI snapshot boundary, a render-only **five-sheet preview** at five physically spaced z elevations, and tests that the solver's deposition, heating and fields remain unchanged. In the Observatory, switch **ICE VIEW → 5 translucent height slices · preview** to compare with the legacy solid slab without resetting the simulation. The five sheets **currently share the same measured basal contour** because the original solver has only one uniform height. This is an honest optical preview for Pass 8's locally varying mass-conserving height model, **not** a calculated set of internal crystal ribs.
+
 ## Crystal orientation / tip-splitting investigation
 
 [ANISOTROPY_PHASE_STUDY.md](ANISOTROPY_PHASE_STUDY.md) explains the physically separated and falsifiable hex solver experiments: a selectable 0°/15°/30° phase in the **local surface-normal** attachment factor, optional positive anisotropic surface stiffness (gamma + gamma-double-prime), and a real rotated hexagonal ice seed. These are NOT dielectric effects; the electric module remains Cartesian-only. The controls default to the original physics and do not enforce six stems or manufacture morphology. Compare with zero kinetic anisotropy and the phase-sweep test results before claiming the 30° setting suppresses splitting.
