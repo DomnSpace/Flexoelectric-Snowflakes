@@ -26,6 +26,37 @@ const DIR=Object.freeze([[1,0],[-1,0],[0,1],[0,-1],[1,-1],[-1,1]]);
 const VECT=DIR.map(([q,r])=>[q+r/2,SQRT3_OVER_2*r]);
 const makeOffsets=N=>[1,-1,N,-N,1-N,N-1];
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const RAD=PI/180;
+/**
+ * Kinetic anisotropy depends on the OUTWARD INTERFACE NORMAL, not the
+ * global polar angle of a growing arm. 30° phase swaps the six maxima and
+ * minima exactly, but it is an experiment, not an established cure.
+ */
+export function sixfoldAttachmentMultiplier(theta,amplitude=0,phaseDeg=0){
+  if(!Number.isFinite(phaseDeg)||!Number.isFinite(amplitude))
+    throw new RangeError('Finite sixfold anisotropy parameters required');
+  return Math.max(0,1+amplitude*Math.cos(6*(theta-phaseDeg*RAD)));
+}
+/**
+ * For gamma(theta)=gamma0[1+eps cos 6(theta-phase)], the 2-D
+ * Gibbs–Thomson interface stiffness gamma+gamma'' is gamma0[1-35 eps cos6].
+ * ONLY the weak, positive-stiffness regime is implemented. Strong faceting
+ * (missing orientations) requires a regularized Wulff / phase-field model.
+ */
+export function sixfoldSurfaceStiffness(theta,epsilon=0,phaseDeg=0){
+  if(!Number.isFinite(epsilon)||Math.abs(epsilon)>0.025||!Number.isFinite(phaseDeg))
+    throw new RangeError('Unregularized sixfold surface stiffness needs |epsilon|<=0.025');
+  return 1-35*epsilon*Math.cos(6*(theta-phaseDeg*RAD));
+}
+export function pointInsideHexSeed(x,y,radius,rotationDeg=0){
+  if(radius<=0)return false;
+  const rIn=radius*Math.sqrt(3)/2;
+  for(let k=0;k<6;k++){
+    const angle=(rotationDeg+30+k*60)*RAD;
+    if(x*Math.cos(angle)+y*Math.sin(angle)>rIn+1e-14)return false;
+  }
+  return true;
+}
 const id=(i,j,N)=>j*N+i;
 const valid=(i,j,N)=>i>=0&&j>=0&&i<N&&j<N;
 export const HEX_NEIGHBORS=DIR;
@@ -46,10 +77,13 @@ export function axialRoundFromXY(x,y,a){
 export function makeHexGrowthState({
   N=73,dx=.75e-6,seedRadius=1.5e-6,Tinf=258.15,
   sigmaInf=.08,pressurePa=101325,basalHalfThickness=1.5e-6,
+  seedShape='circle',seedRotationDeg=0,
   kinetics=DEFAULT_ICE_KINETICS
 }={}){
   if(!Number.isInteger(N)||N<13||N%2!==1)throw new RangeError('Hex grid N must be odd and >= 13');
   if(!(dx>0&&seedRadius>=0&&sigmaInf>=0&&Tinf>110&&pressurePa>0))throw new RangeError('Invalid hex physical grid/environment');
+  if(!['circle','hex'].includes(seedShape)||!Number.isFinite(seedRotationDeg))
+    throw new RangeError('Invalid seed geometry');
   const n=N*N,R=(N-1)/2,mask=new Uint8Array(n),ice=new Uint8Array(n);
   const phi=new Float64Array(n),sigma=new Float64Array(n),dT=new Float64Array(n),heatSource=new Float64Array(n);
   sigma.fill(sigmaInf);
@@ -58,7 +92,10 @@ export function makeHexGrowthState({
     const q=i-R,r=j-R,k=id(i,j,N);if(axialRadius(q,r)>R)continue;
     mask[k]=1;activeSites++;
     const {x,y}=axialToXY(q,r,dx);
-    if(Math.hypot(x,y)<=seedRadius){ice[k]=1;phi[k]=1;sigma[k]=0;}
+    const inside=seedShape==='hex'?
+      pointInsideHexSeed(x,y,seedRadius,seedRotationDeg):
+      Math.hypot(x,y)<=seedRadius;
+    if(inside){ice[k]=1;phi[k]=1;sigma[k]=0;}
   }
   // All interior cells have six equidistant neighbors; cache their indices,
   // avoiding 6× dynamic callbacks per Jacobi sweep on 401² grids.
@@ -70,7 +107,7 @@ export function makeHexGrowthState({
   return {topology:'triangular',N,dx,R,mask,activeSites,
     interior:Uint32Array.from(interior),edges:Uint32Array.from(edges),
     ice,phi,sigma,dT,heatSource,Tinf,sigmaInf,pressurePa,
-    basalHalfThickness,kinetics:JSON.parse(JSON.stringify(kinetics)),
+    basalHalfThickness,seedShape,seedRotationDeg,kinetics:JSON.parse(JSON.stringify(kinetics)),
     t:0,totalDepositedMass:0,totalLatentHeat:0,lastBudget:null,
     electric:null,domainExpansions:0};
 }
@@ -192,14 +229,21 @@ export function resolvedHexGrowthStep(state,dt,{vaporIterations=45,heatIteration
     const Ts=Tinf+(iceWeight?localTemp/iceWeight:state.dT[k]);
     const cSat=saturationMassDensityIce(Ts);
     const delta=capillaryLengthIceVapor(Ts,rhoi,kParams.gammaIv);
-    const exponent=kParams.capillarity===false?0:delta*g.curvature;
+    // The weak smooth-surface anisotropy is distinct from kinetic alpha.
+    // gamma+gamma'' controls capillary stiffness in a 2-D sharp-interface
+    // approximation, not simply gamma(theta) or an electric potential.
+    const stiffness=sixfoldSurfaceStiffness(g.theta,
+      kParams.surfaceEnergyEpsilon??0,
+      kParams.surfacePhaseDeg??kParams.kineticPhaseDeg??0);
+    const exponent=kParams.capillarity===false?0:delta*stiffness*g.curvature;
     const cEq=cSat*Math.exp(exponent);
     const cGas=cRef*Math.max(1e-9,1+sigma[k]);
     const sigmaDrive=Math.max(0,cGas/cEq-1);
     let model={...kParams.prism};
     if(kParams.sdak)model.sigma0*=Math.max(.08,1-(kParams.sdakStrength??.55)*(1-filled/6));
     const base=attachmentCoefficient(sigmaDrive,model);
-    const alpha=clamp(base*(1+(kParams.anisotropy6??0)*Math.cos(6*g.theta)),0,1);
+    const alpha=clamp(base*sixfoldAttachmentMultiplier(
+      g.theta,kParams.anisotropy6??0,kParams.kineticPhaseDeg??0),0,1);
     const Rdiff=dx/(2*Math.max(1e-30,Dv));
     const Rkin=cEq/Math.max(1e-30,rhoi*alpha*vkin);
     const flux=Math.max(0,cGas-cEq)/(Rdiff+Rkin);
@@ -235,7 +279,11 @@ export function resolvedHexGrowthStep(state,dt,{vaporIterations=45,heatIteration
     meanElectricLogShift:0,maxElectricLogShift:0,
     maxElectricFieldVM:0,maxFlexoPolarizationCm2:0,electricResidualRmsV:0,
     stencil:'six-equidistant-triangular',orientation:'six-site-phase-gradient',
-    lattice:'mesoscopic transport mesh, NOT H-bond positions'
+    lattice:'mesoscopic transport mesh, NOT H-bond positions',
+    kineticPhaseDeg:kParams.kineticPhaseDeg??0,
+    surfaceEnergyEpsilon:kParams.surfaceEnergyEpsilon??0,
+    surfacePhaseDeg:kParams.surfacePhaseDeg??kParams.kineticPhaseDeg??0,
+    seedShape:state.seedShape,seedRotationDeg:state.seedRotationDeg
   };
   return state;
 }
@@ -342,7 +390,8 @@ export function enlargeHexDomain(state,newN){
   const next=makeHexGrowthState({
     N:newN,dx:state.dx,seedRadius:0,Tinf:state.Tinf,
     sigmaInf:state.sigmaInf,pressurePa:state.pressurePa,
-    basalHalfThickness:state.basalHalfThickness,kinetics:state.kinetics
+    basalHalfThickness:state.basalHalfThickness,kinetics:state.kinetics,
+    seedShape:state.seedShape,seedRotationDeg:state.seedRotationDeg
   });
   const offset=(newN-state.N)/2;
   for(let j=0;j<state.N;j++)for(let i=0;i<state.N;i++){
