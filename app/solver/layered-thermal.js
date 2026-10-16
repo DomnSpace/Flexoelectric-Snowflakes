@@ -17,7 +17,7 @@ import {thermalConductivityAir} from './thermo.js';
 import {iceIhProperties} from './ice-ih-eos.js';
 import {saturationMassDensityIce} from './postseed.js';
 
-const SQRT3=Math.sqrt(3),LATERAL=[[1,0],[0,1],[1,-1]];
+const LATERAL=[[1,0],[0,1],[-1,1]];
 const safe=(v,n)=>{if(!Number.isFinite(v)||v<=0)throw new RangeError(n+' must be positive finite');};
 const sum=a=>{let v=0;for(const x of a)v+=x;return v;};
 
@@ -90,7 +90,7 @@ function buildHeatMatrix(s,dt,source){
     }
     // For exterior faces in the three remaining lateral directions we
     // add boundary heat transfers separately (interior faces exactly once).
-    for(const [dq,dr] of [[-1,0],[0,-1],[-1,1]]){
+    for(const [dq,dr] of [[-1,0],[0,-1],[1,-1]]){
       const ii=i+dq,jj=j+dr;
       if(ii<0||jj<0||ii>=s.N||jj>=s.N||!s.hexMask[jj*s.N+ii])
         outer('lateral',s.sideArea,s.dx/2);
