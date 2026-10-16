@@ -20,7 +20,16 @@ try{
     ' / console: '+errors.join(' | '));
   assert.match(await page.locator('#status').innerText(),/SOLVER RUNNING/);
   assert.equal(await page.locator('#viewport canvas').count(),1,'WebGL canvas mounted');
-  assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),73,'numeric field raster');
+  assert.equal(await page.locator('#topology').inputValue(),'triangular',
+    'triangular lattice is the startup default');
+  assert.equal(await page.locator('#kineticPhase').inputValue(),'30',
+    'stellar candidate starts with experimentally favored 30-degree orientation');
+  assert.equal(await page.locator('#sigma').inputValue(),'14');
+  assert.equal(await page.locator('#gridSize').inputValue(),'129');
+  assert.equal(await page.locator('#sdak').isChecked(),true);
+  assert.equal(await page.locator('#electricEnabled').isChecked(),false);
+  assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),1024,
+    'hi-res triangular phase display renders from real physical grid');
   for(const id of ['radialGraph','growthGraph','modeGraph']){
     const dims=await page.locator('#'+id).evaluate(el=>[el.width,el.height]);
     assert.ok(dims[0]>20&&dims[1]>20,'chart '+id+' has dimensions');
@@ -71,6 +80,10 @@ try{
   assert.equal(await page.locator('#pending').isVisible(),true,'parameter changes must be pending');
   await page.locator('#apply').click();
   assert.equal(await page.locator('#pending').isVisible(),false,'apply resets model');
+  // The electric Poisson branch remains a separate Cartesian experiment;
+  // switching to it must not silently enable electric effects on the hex grid.
+  await page.locator('#topology').selectOption('square');
+  await page.locator('#apply').click();
   // Exercise the optional electrostatic experiment with a physically
   // computed potential, rather than trusting only the new DOM controls.
   await page.locator('#electricEnabled').check();
@@ -99,6 +112,8 @@ try{
   await page.locator('#habit').selectOption('dendrite');
   await page.locator('#preset').click();
   assert.equal(await page.locator('#topology').inputValue(),'triangular');
+  assert.equal(await page.locator('#kineticPhase').inputValue(),'30',
+    'reloading dendrite must not reset the intended orientation to zero');
   assert.equal(await page.locator('#gridSize').inputValue(),'129');
   assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),1024,
     'triangular field uses display-only 1024-pixel interpolation, not solver-cell raster');
@@ -124,6 +139,8 @@ try{
   assert.equal(await page.locator('#gridSize').inputValue(),'97');
   assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),1024);
   assert.equal(await page.locator('#topology').inputValue(),'triangular');
+  assert.equal(await page.locator('#kineticPhase').inputValue(),'0',
+    'compact plate remains a genuine 0-degree comparison control');
   assert.equal(Number(await page.locator('#basalA').inputValue()),.009);
   assert.match(await page.locator('#domainStatus').innerText(),/VALIDITY|CAUTION/);
   assert.equal(await page.locator('#errorOverlay').isVisible(),false);
@@ -192,7 +209,9 @@ try{
     {waitUntil:'domcontentloaded'});
   await lab.waitForFunction(()=>document.querySelector('#status')?.textContent.includes('READY'),
     {timeout:45000});
-  assert.equal(await lab.locator('.panes canvas').count(),5);
+  assert.equal(await lab.locator('#thermalMode').inputValue(),'coupled',
+    'independent Model B laboratory now starts with physical heat transport');
+    assert.equal(await lab.locator('.panes canvas').count(),5);
   assert.match(await lab.locator('h1').innerText(),/FIVE-LAYER/);
   const initialLabTime=await lab.locator('#time').innerText();
   await lab.locator('#step').click({timeout:60000});
@@ -201,13 +220,29 @@ try{
     {timeout:60000});
   assert.notEqual(await lab.locator('#time').innerText(),initialLabTime);
   assert.match(await lab.locator('#status').innerText(),/5 DISTINCT PHYSICAL FIELDS/);
+  assert.ok(parseFloat(await lab.locator('#maxTemp').innerText())>0,
+    'real latent deposition must create a computed thermal field');
+  assert.match(await lab.locator('#heatBalance').innerText(),/J/,
+    'the heat-energy residual must be reported separately from water mass');
   assert.notEqual(await lab.locator('#mass0').innerText(),await lab.locator('#mass2').innerText(),
     'exposed top/bottom layer must differ from central in the controlled model B test');
   const beforeDisplayOnly=await lab.locator('#ice').innerText();
+  await lab.locator('#mapMode').selectOption('temperature');
+  assert.equal(await lab.locator('#ice').innerText(),beforeDisplayOnly,
+    'switching to computed temperature visualization must not alter ice growth');
+  await lab.locator('#mapMode').selectOption('ice');
   await lab.locator('#gain').selectOption('1');
   assert.equal(await lab.locator('#ice').innerText(),beforeDisplayOnly,
     'visual contrast must not affect condensed mass');
-  await lab.screenshot({path:'artifacts/snowflake-model-b-layers.png',
+  await lab.locator('#thermalMode').selectOption('off');
+  assert.equal((await lab.locator('#maxTemp').innerText()).trim(),'OFF');
+  await lab.locator('#step').click({timeout:60000});
+  await lab.waitForFunction(()=>!document.querySelector('#step').disabled &&
+    document.querySelector('#status').textContent.includes('COMPUTED'),
+    {timeout:60000});
+  assert.match(await lab.locator('#status').innerText(),/NO-HEAT CONTROL/);
+  await lab.locator('#thermalMode').selectOption('coupled');
+    await lab.screenshot({path:'artifacts/snowflake-model-b-layers.png',
     fullPage:true,animations:'disabled'});
   assert.deepEqual(labErrors,[],'no model B laboratory runtime errors');
   await lab.close();

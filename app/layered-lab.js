@@ -3,6 +3,7 @@ import {
   fiveLayerOccupancy,fiveLayerDiagnostics
 } from './solver/layered-ice-front.js';
 import {layeredImplicitTrackedWaterKg} from './solver/layered-vapor-implicit.js';
+import {layeredThermalEnergyJ} from './solver/layered-thermal.js';
 
 const $=id=>document.getElementById(id);
 const nformat=x=>Number.isFinite(x)?x.toExponential(3):'—';
@@ -12,10 +13,13 @@ function reset(){
   if(busy)return;
   state=createFiveLayerCrystal({N:N(),seedRadiusCells:0,
     prismAttachmentMPerS:5e-3,basalAttachmentMPerS:6e-3,
-    Tinf:258.15,sigmaInf:.14,pressurePa:101325});
+    Tinf:258.15,sigmaInf:.14,pressurePa:101325,
+    thermalCoupling:$('thermalMode').value==='coupled'});
   initialWater=layeredImplicitTrackedWaterKg(state);
   last=null;
-  $('status').textContent='READY · INDEPENDENT ICE PLANES';
+  $('status').style.color='';
+  $('status').textContent='READY · INDEPENDENT ICE PLANES · '+
+    (state.thermal?'THERMAL COUPLED':'NO HEAT CONTROL');
   draw();
 }
 function hexPath(ctx,x,y,r){
@@ -27,7 +31,7 @@ function hexPath(ctx,x,y,r){
   }
   ctx.closePath();
 }
-function drawLayer(canvas,phi,seed){
+function drawLayer(canvas,phi,seed,temperature,maxTemperature){
   const ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height;
   ctx.clearRect(0,0,w,h);
   ctx.fillStyle='#061827';ctx.fillRect(0,0,w,h);
@@ -35,6 +39,7 @@ function drawLayer(canvas,phi,seed){
   const unit=Math.min((w-36)/(2*R+2),(h-36)/(Math.sqrt(3)*R+2));
   const hexR=unit/Math.sqrt(3)+.28;
   const gain=Number($('gain').value);
+  const heatMode=$('mapMode').value==='temperature';
   let hasNew=0;
   for(let j=0;j<N;j++)for(let i=0;i<N;i++){
     const k=j*N+i;if(!state.hexMask[k])continue;
@@ -44,10 +49,17 @@ function drawLayer(canvas,phi,seed){
     const visible=isSeed?1:Math.max(0,Math.min(1,ice*gain));
     const shade=Math.sqrt(visible);
     if(ice>0&&!isSeed)hasNew++;
-    ctx.fillStyle=isSeed?'rgb(230,247,255)':
-      ice>0?'rgba(135,219,249,'+(0.09+0.90*shade)+')':'rgba(35,82,105,.27)';
+    if(heatMode){
+      const warmth=Math.min(1,Math.max(0,(temperature?.[k]??0)/Math.max(maxTemperature,1e-12)));
+      ctx.fillStyle='rgba('+Math.round(35+205*warmth)+','+
+        Math.round(80+107*(1-warmth))+','+
+        Math.round(160-100*warmth)+','+(.14+.86*Math.sqrt(warmth))+')';
+    }else{
+      ctx.fillStyle=isSeed?'rgb(230,247,255)':
+        ice>0?'rgba(135,219,249,'+(0.09+0.90*shade)+')':'rgba(35,82,105,.27)';
+    }
     hexPath(ctx,x,y,hexR);ctx.fill();
-    if(ice>0&&!isSeed&&visible>.5){
+    if(!heatMode&&ice>0&&!isSeed&&visible>.5){
       ctx.strokeStyle='rgba(213,250,255,.35)';ctx.lineWidth=.5;ctx.stroke();
     }
   }
@@ -57,13 +69,16 @@ function draw(){
   if(!state)return;
   const maps=fiveLayerOccupancy(state),diag=fiveLayerDiagnostics(state);
   const k=state.gasHaloSlabs;
+  const hottest=state.temperatureDeltaK?Math.max(...state.temperatureDeltaK):0;
   for(let l=0;l<5;l++){
     const seed=state.seedSolidMask.subarray((k+l)*state.nxy,(k+l+1)*state.nxy);
-    const active=drawLayer($('layer'+l),maps[l],seed);
+    const temp=state.temperatureDeltaK?.subarray((k+l)*state.nxy,(k+l+1)*state.nxy);
+    const active=drawLayer($('layer'+l),maps[l],seed,temp,hottest);
     const newlyDeposited=state.iceDepositionPerSlabKg[k+l];
     $('mass'+l).textContent=nformat(diag.massKg[l])+
       ' kg total · +'+nformat(newlyDeposited)+' kg deposited · '+
-      active+' newly occupied sites';
+      active+' newly occupied sites'+
+      (temp?' · peak ΔT '+Math.max(...temp).toFixed(5)+' K':'');
   }
   const gains=Array.from(state.iceDepositionPerSlabKg.slice(k,k+5));
   const max=Math.max(...gains,1e-99);
@@ -82,9 +97,14 @@ function draw(){
   $('balance').textContent=nformat(
     layeredImplicitTrackedWaterKg(state)-initialWater-
     (state.externalMassInKg-state.externalMassOutKg))+' kg';
+  $('maxTemp').textContent=state.thermal?hottest.toFixed(6)+' K':'OFF';
+  $('heatBalance').textContent=state.thermal?
+    nformat(state.thermalLatentInjectedJ-state.thermalBoundaryHeatOutJ-
+      layeredThermalEnergyJ(state))+' J':'OFF';
   if(last){
     $('status').textContent='COMPUTED · '+last.iterations+
-      ' CG ITERATIONS · 5 DISTINCT PHYSICAL FIELDS';
+      ' CG ITERATIONS · 5 DISTINCT PHYSICAL FIELDS'+
+      (last.thermal?' · LATENT HEAT COUPLED':' · NO-HEAT CONTROL');
   }
 }
 async function advance(steps){
@@ -113,4 +133,6 @@ $('reset').addEventListener('click',reset);
 $('grid').addEventListener('change',reset);
 $('dt').addEventListener('change',()=>{});
 $('gain').addEventListener('change',draw);
+$('mapMode').addEventListener('change',draw);
+$('thermalMode').addEventListener('change',reset);
 reset();

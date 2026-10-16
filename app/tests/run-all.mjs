@@ -18,6 +18,7 @@ const tests = [
   './layered-gas-fv.test.mjs',
   './layered-implicit.test.mjs',
   './five-layer-ice-front.test.mjs',
+  './layered-thermal.test.mjs',
   './electric25d.test.mjs',
   './fieldlines.test.mjs',
 ];

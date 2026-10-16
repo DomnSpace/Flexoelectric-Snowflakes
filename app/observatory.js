@@ -695,7 +695,8 @@ function loadSelectedHabit(){
   // Weather scenarios are neutral; electric forcing is a separate experiment.
   $('electricEnabled').checked=false;$('electricCouple').checked=false;
   $('eField').value='2';$('bendGradient').value='0';
-  $('kineticPhase').value='0';$('surfaceEpsilon').value='0';
+  $('kineticPhase').value=String(habit.kineticPhaseDeg??0);
+  $('surfaceEpsilon').value=String(habit.surfaceEnergyEpsilon??0);
   $('seedShape').value='circle';$('seedPhase').value='0';
   $('topology').value='triangular';topologyControls();
   activeHabit=key;formatControls();reset(true);describeSelectedHabit();
@@ -793,6 +794,6 @@ function loop(now){
 setupEvents();
 try{
   initializeScene();
-  reset(true);
+  loadSelectedHabit();
 }catch(e){fail(e);}
 requestAnimationFrame(loop);

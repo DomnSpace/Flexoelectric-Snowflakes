@@ -45,6 +45,12 @@ The fixed 0.5-second model step and bounded 360-frame history make replay determ
 The source-level contract test verifies expected DOM bindings, real solver imports, and numerical snapshot fields. The existing numerical suite covers physical modules. Browser-level WebGL rendering and CDN retrieval still require verification on a modern Chromium browser. GitHub Actions runs syntax and Node tests on the feature branch and pull requests.
 
 
+## Default stellar ice habit / thermal five-layer coupling (Step 4/15)
+
+The Observatory now **starts with the triangular stellar experiment at a 30° kinetic phase**, 14% ice supersaturation, 0.50 sixfold anisotropy and SDAK on, using its physical 129-index hexagonal domain with automatic growth up to 300 µm. These settings reproduce the explicitly selected stellar research configuration without presuming that the 30° orientation is universally correct for ice Ih. Choosing another habit or using Cartesian/electric controls still works, and changing back to Stellar reloads 30° instead of reverting to 0°. See [FIVE_LAYER_THERMAL.md](FIVE_LAYER_THERMAL.md) for the physics and tests.
+
+The independent [five-layer Model B laboratory](app/layered-lab.html) now runs with **coupled latent-heat conduction by default**, adjustable to an uncoupled no-heat control. The five ice maps are actual separately deposited mass/volume fractions sharing vapor; the optional temperature maps, maximum ΔT and energy residual are measured from an implicit conservative voxel gas/ice heat solver. This remains a **small-grid experimental 3D-transport reduction**, not a converged 300 µm faceted 3D ice solver or molecular snowflake rendering.
+
 ## Model B — five genuinely competing ice slabs (Step 3/15)
 
 [Launch the independent five-layer physical growth laboratory](app/layered-lab.html) to inspect **five separate calculated ice-occupation fields**, their layer-specific vapor deposition and a shared finite-volume gas inventory. [FIVE_LAYER_MODEL_B.md](FIVE_LAYER_MODEL_B.md) provides the equations, computational compromises and exact conservation tests.

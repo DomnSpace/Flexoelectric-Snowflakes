@@ -28,7 +28,8 @@ export const GROWTH_HABITS=Object.freeze({
   dendrite:Object.freeze({
     name:'Stellar dendrite candidate',category:'plate',supported:true,
     temperatureC:-15,sigmaPercent:14,pressureKPa:101,
-    anisotropy6:.50,prismSigma0:.0035,basalSigma0:.01,basalA:.004,
+    anisotropy6:.50,kineticPhaseDeg:30,surfaceEnergyEpsilon:0,
+    prismSigma0:.0035,basalSigma0:.01,basalA:.004,
     seedRadiusUm:1.5,gridN:129,sdak:true,capillarity:true,
     expectation:'Near −15 °C and high supersaturation, stellar dendrites occur in nature. This solver must demonstrate branching rather than assume it.',
     evidence:'Libbrecht 2005, Fig. 2; high supersaturation gives greater morphological complexity',
