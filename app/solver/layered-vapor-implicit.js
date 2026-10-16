@@ -38,41 +38,75 @@ function initialLayout(s){
   }
   return {nodes,map};
 }
+export function layeredImplicitGasMassKg(s){
+  if(!s.iceFraction)return layeredGasMassKg(s);
+  let m=0;
+  for(let z=0;z<s.nz;z++)for(let p=0;p<s.nxy;p++){
+    if(!s.hexMask[p])continue;
+    const k=z*s.nxy+p;
+    if(!s.solid[k])m+=s.c[k]*s.volume*(1-s.iceFraction[k]);
+  }
+  return m;
+}
+export function layeredImplicitTrackedWaterKg(s){
+  return layeredImplicitGasMassKg(s)+s.totalDepositedKg+(s.trappedVaporKg||0);
+}
 export function assembleLayeredImplicit(s,dt){
   validate(dt,'dt');
   if(s.schema!=='snowflake/vertical-gas-fv-step2')throw new TypeError('Expected Step-2 gas FV state');
   const {nodes,map}=initialLayout(s);
-  const n=nodes.length,diag=new Float64Array(n).fill(1),local=new Float64Array(n).fill(1),rhs=new Float64Array(n);
+  const n=nodes.length,diag=new Float64Array(n),local=new Float64Array(n),rhs=new Float64Array(n);
   const edges=[],sinks=[],reservoirs=[];
   const coef=dt/s.volume;
   const lateral=s.D*s.sideArea/s.dx*coef,vertical=s.D*s.area/s.dz*coef;
   for(let m=0;m<n;m++){
     const k=nodes[m],z=Math.floor(k/s.nxy),p=k-z*s.nxy;
     const i=p%s.N,j=Math.floor(p/s.N);
+    const free=s.iceFraction?1-s.iceFraction[k]:1;
+    if(!(free>0))throw new Error('Gas cell has zero available gas volume');
+    diag[m]=local[m]=free;
     rhs[m]=s.c[k]-s.ceq;
     if(rhs[m]<-1e-14)throw new RangeError('Condensation-only implicit solver requires c >= c_eq');
-    rhs[m]=Math.max(0,rhs[m]);
-    function coupled(other,weight){
-      if(other<0||!s.solid[other]){
-        if(other<0)return;
+    rhs[m]=free*Math.max(0,rhs[m]);
+    function coupled(other,weight,faceArea,basal){
+      if(other<0)return;
+      const rate=basal?s.kBasal:s.kPrism;
+      const attachment=rate*faceArea*coef*free;
+      if(!s.solid[other]){
         const nb=map[other];
         if(nb<0)throw new Error('Invalid active neighbor mapping');
+        const freeOther=s.iceFraction?1-s.iceFraction[other]:1;
         if(nb>m){
-          edges.push([m,nb,weight]);
-          diag[m]+=weight;diag[nb]+=weight;
+          // A partially occupied cell reduces the gas-accessible
+          // cross-section on a shared face; both directions use the
+          // exact same conductance (symmetric positive-definite).
+          const g=weight*Math.min(free,freeOther);
+          edges.push([m,nb,g]);
+          diag[m]+=g;diag[nb]+=g;
         }
-      }else{
-        const basal=Math.abs(other-k)===s.nxy;
-        const attachment=(basal?s.kBasal*s.area:s.kPrism*s.sideArea)*coef;
-        if(attachment>0){
-          diag[m]+=attachment;local[m]+=attachment;
-          sinks.push([m,other,attachment]);
+        // Vapor at this gas site can condense on the *other site's*
+        // partial-ice interface. Thus partially occupied cells affect
+        // the next physical step instead of being render-only.
+        if(s.iceFraction&&s.iceFraction[other]>0&&attachment>0){
+          const w=attachment*s.iceFraction[other];
+          diag[m]+=w;local[m]+=w;
+          sinks.push([m,other,w]);
         }
+      }else if(attachment>0){
+        diag[m]+=attachment;local[m]+=attachment;
+        // A solid voxel cannot receive another voxel's volume. In
+        // moving-front mode place growth in the adjacent gas voxel;
+        // vertical exterior halo faces instead add subcell thickness
+        // to the existing surface voxel.
+        const z=Math.floor(k/s.nxy),eligible=z>=s.gasHaloSlabs&&
+          z<s.gasHaloSlabs+s.iceSlabs;
+        const target=s.iceFraction&&eligible?k:other;
+        sinks.push([m,target,attachment]);
       }
     }
     function border(which,faceArea,halfWidth){
       if(s.boundaries[which]!=='reservoir')return;
-      const weight=s.D*faceArea/halfWidth*coef;
+      const weight=s.D*faceArea/halfWidth*coef*free;
       const cExternal=s.boundaries[which+'ConcentrationKgM3'];
       if(cExternal<s.ceq-1e-14)
         throw new RangeError('Condensation-only reservoir must be >= equilibrium concentration');
@@ -83,12 +117,12 @@ export function assembleLayeredImplicit(s,dt){
     for(const [dq,dr] of DIR){
       const other=neighbor(s,i,j,z,dq,dr);
       if(other<0)border('lateral',s.sideArea,s.dx/2);
-      else coupled(other,lateral);
+      else coupled(other,lateral,s.sideArea,false);
     }
     for(const dz of [-1,1]){
       const zz=z+dz;
       if(zz<0||zz>=s.nz)border(zz<0?'bottom':'top',s.area,s.dz/2);
-      else coupled(indexed(s,i,j,zz),vertical);
+      else coupled(indexed(s,i,j,zz),vertical,s.area,true);
     }
   }
   return {nodes,map,diag,local,rhs,edges,sinks,reservoirs,coef,dt,
@@ -176,7 +210,7 @@ export function solveLayeredImplicit(s,dt,{
  * projected occupancy fields later (without inventing vapor).
  */
 export function stepLayeredImplicit(s,dt,opts={}){
-  const before=layeredTrackedWaterKg(s);
+  const before=layeredImplicitTrackedWaterKg(s);
   const {A,x,iterations,relativeResidual,conservationShiftKgM3}=solveLayeredImplicit(s,dt,opts);
   const cvMass=s.volume,events=[],perIceSlab=new Float64Array(s.iceSlabs);
   let massToIce=0,boundaryInKg=0,boundaryOutKg=0;
@@ -197,9 +231,9 @@ export function stepLayeredImplicit(s,dt,opts={}){
     else boundaryOutKg-=mass;
   }
   // Validate budget BEFORE changing any physical data.
-  const newGasMass=x.reduce((total,u,i)=>total+(s.ceq+u)*cvMass,0);
+  const newGasMass=x.reduce((total,u,i)=>total+(s.ceq+u)*cvMass*(s.iceFraction?1-s.iceFraction[A.nodes[i]]:1),0);
   const expected=newGasMass+massToIce+boundaryOutKg-boundaryInKg;
-  const residualKg=expected-layeredGasMassKg(s);
+  const residualKg=expected-layeredImplicitGasMassKg(s);
   const budgetScale=Math.max(before,1e-30);
   if(Math.abs(residualKg)>budgetScale*Math.max(opts.tolerance??1e-10,1e-10)*6)
     throw new Error('Implicit finite-volume mass residual too large: '+residualKg);
@@ -216,7 +250,7 @@ export function stepLayeredImplicit(s,dt,opts={}){
     relativeResidual,conservationShiftKgM3,massResidualKg:residualKg,faces:events.length,
     depositedKg:massToIce,perIceSlabDepositedKg:Array.from(perIceSlab),
     boundaryMassInKg:boundaryInKg,boundaryMassOutKg:boundaryOutKg,
-    gasMassKg:layeredGasMassKg(s),latentReleasedJ:massToIce*s.Ls,
+    gasMassKg:layeredImplicitGasMassKg(s),latentReleasedJ:massToIce*s.Ls,
     heatTransportSolved:false,interfaceMotionSolved:false,
     depositionEvents:events};
   s.lastStep=report;
