@@ -32,13 +32,15 @@ footer{padding:25px 0;color:#829dac;font-size:12px}.result{font-size:12px;color:
 <header><div><div class="eyebrow">DOMNSPACE / PHYSICS EXPERIMENT · MODEL B</div>
 <h1>FIVE-LAYER <span style="color:#8adbf8">ICE GROWTH</span></h1>
 <p>Five independent ice-occupation fields compete for the same vertically diffusing vapor. These are computed mass fractions, not five repeated render sheets.</p></div><a href="../index.html">← Snowflake Observatory</a></header>
-<div class="note">This is an <strong>experimental coarse-voxel model</strong>. Exposed ice interfaces consume vapor from one shared reservoir; the grown ice partially replaces local gas volume. Latent heat is counted, <strong>but thermal transport is not yet solved</strong>. Physical layer thickness is 0.75 µm, not a molecular ice layer.</div>
+<div class="note">This is an <strong>experimental coarse-voxel model</strong>. Exposed ice interfaces consume vapor from one shared reservoir; the grown ice partially replaces local gas volume. Latent heat now enters an optional <strong>conservative gas/ice heat-conduction solver</strong>, which changes local equilibrium vapor concentration on subsequent steps. Physical layer thickness is 0.75 µm, not a molecular ice layer.</div>
 <div class="controls">
 <button class="primary" type="button" id="step">→ One physics step</button>
 <button id="step10" type="button">→ 10 steps</button>
 <button id="reset" type="button">↺ Reset</button>
 <label>DOMAIN <select id="grid"><option value="11">11² · small</option><option value="15">15² · detailed</option><option value="21">21² · slower</option></select></label>
 <label>TIMESTEP <select id="dt"><option value=".002">2 ms</option><option value=".01" selected>10 ms</option><option value=".02">20 ms</option></select></label>
+<label>THERMAL <select id="thermalMode"><option value="coupled" selected>Coupled heat · model B</option><option value="off">No heat · control</option></select></label>
+<label>DISPLAY <select id="mapMode"><option value="ice">Ice occupancy</option><option value="temperature">ΔT [K] · heat map</option></select></label>
 <label>PHASE DISPLAY <select id="gain"><option value="1">1× physical</option><option value="100">100× contrast</option><option value="1000" selected>1000× contrast</option></select></label>
 <output id="status" role="status">INITIALIZING PHYSICS</output>
 </div>
@@ -47,6 +49,8 @@ footer{padding:25px 0;color:#829dac;font-size:12px}.result{font-size:12px;color:
 <div class="stat"><small>DEPOSITED ICE MASS</small><strong id="ice">—</strong></div>
 <div class="stat"><small>TRANSPORT RESIDUAL</small><strong id="residual">—</strong></div>
 <div class="stat"><small>WATER INVENTORY ERROR</small><strong id="balance">—</strong></div>
+<div class="stat"><small>HOTTEST CELL ABOVE AMBIENT</small><strong id="maxTemp">—</strong></div>
+<div class="stat"><small>THERMAL ENERGY RESIDUAL</small><strong id="heatBalance">—</strong></div>
 </div>
 <section class="panes" id="planes">
 <div class="pane"><h2>01 · Bottom</h2><canvas id="layer0" width="240" height="240"></canvas><p>Exposed lower basal face</p><output id="mass0">—</output></div>
@@ -57,6 +61,6 @@ footer{padding:25px 0;color:#829dac;font-size:12px}.result{font-size:12px;color:
 </section>
 <section class="under"><h2>Measured vapor deposition by ice layer</h2><p>Deposited masses are derived from the actual gas→ice face transfers. No center-layer weighting is imposed.</p>
 <div id="bars"></div></section>
-<div class="note warn" id="limitation">The five maps display numerical ice occupation. Fine internal ridges, 3D diffraction optics, and calibrated edge-SDAK are not yet predicted.</div>
-<footer>Model B · Step 3/15 · <a href="../FIVE_LAYER_MODEL_B.md">Numerical formulation and limitations</a> · <a href="https://github.com/DomnSpace/Flexoelectric-Snowflakes">Source</a></footer>
+<div class="note warn" id="limitation">Heat transport is a coarse fixed-property voxel approximation, not calibrated ice-facet thermodynamics or natural convection. The model is presently validated only on small domains. Internal ribs, 3D optical effects and calibrated edge-SDAK are not yet predicted.</div>
+<footer>Model B · Step 4/15 · <a href="../FIVE_LAYER_THERMAL.md">Thermal coupling</a> · <a href="../FIVE_LAYER_MODEL_B.md">Numerical formulation and limitations</a> · <a href="https://github.com/DomnSpace/Flexoelectric-Snowflakes">Source</a></footer>
 </main></body></html>
