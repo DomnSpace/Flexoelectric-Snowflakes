@@ -42,7 +42,7 @@ export function assembleLayeredImplicit(s,dt){
   validate(dt,'dt');
   if(s.schema!=='snowflake/vertical-gas-fv-step2')throw new TypeError('Expected Step-2 gas FV state');
   const {nodes,map}=initialLayout(s);
-  const n=nodes.length,diag=new Float64Array(n).fill(1),rhs=new Float64Array(n);
+  const n=nodes.length,diag=new Float64Array(n).fill(1),local=new Float64Array(n).fill(1),rhs=new Float64Array(n);
   const edges=[],sinks=[],reservoirs=[];
   const coef=dt/s.volume;
   const lateral=s.D*s.sideArea/s.dx*coef,vertical=s.D*s.area/s.dz*coef;
@@ -65,7 +65,7 @@ export function assembleLayeredImplicit(s,dt){
         const basal=Math.abs(other-k)===s.nxy;
         const attachment=(basal?s.kBasal*s.area:s.kPrism*s.sideArea)*coef;
         if(attachment>0){
-          diag[m]+=attachment;
+          diag[m]+=attachment;local[m]+=attachment;
           sinks.push([m,other,attachment]);
         }
       }
@@ -76,7 +76,7 @@ export function assembleLayeredImplicit(s,dt){
       const cExternal=s.boundaries[which+'ConcentrationKgM3'];
       if(cExternal<s.ceq-1e-14)
         throw new RangeError('Condensation-only reservoir must be >= equilibrium concentration');
-      diag[m]+=weight;
+      diag[m]+=weight;local[m]+=weight;
       rhs[m]+=weight*Math.max(0,cExternal-s.ceq);
       reservoirs.push([m,which,weight,cExternal]);
     }
@@ -91,15 +91,20 @@ export function assembleLayeredImplicit(s,dt){
       else coupled(indexed(s,i,j,zz),vertical);
     }
   }
-  return {nodes,map,diag,rhs,edges,sinks,reservoirs,coef,dt,
+  return {nodes,map,diag,local,rhs,edges,sinks,reservoirs,coef,dt,
     gasCells:n,meshFullCells:s.c.length};
 }
 function matvec(A,x,y){
-  for(let i=0;i<x.length;i++)y[i]=A.diag[i]*x[i];
-  for(const [i,j,w] of A.edges){const diff=w*(x[i]-x[j]);y[i]-=w*x[j];y[j]-=w*x[i];}
-  // Unlike a standard graph Laplacian implementation the matrix was
-  // assembled with +w on diag for each edge; the formula above is exactly
-  // Aii*xi - wij*xj. (diff is intentionally not used as the diag term.)
+  // Evaluate the diffusion operator as differences of neighboring values:
+  //  y_i = (1+sink+reservoir)*x_i + Σ_ij w_ij*(x_i-x_j).
+  // Computing diag*x_i - Σ w*x_j loses 8+ significant digits when
+  // dt/dtExplicit is large and x varies very slowly. This flux form
+  // preserves the exact constant nullspace of diffusion up to roundoff.
+  for(let i=0;i<x.length;i++)y[i]=A.local[i]*x[i];
+  for(const [i,j,w] of A.edges){
+    const flux=w*(x[i]-x[j]);
+    y[i]+=flux;y[j]-=flux;
+  }
 }
 function dot(a,b){let s=0;for(let i=0;i<a.length;i++)s+=a[i]*b[i];return s;}
 function norm(a){return Math.sqrt(dot(a,a));}
