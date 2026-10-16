@@ -61,6 +61,7 @@ export function createFiveLayerCrystal({
   const s=createLayeredGasFV({N,dx,dz,iceSlabs:5,gasHaloSlabs,
     Tinf,pressurePa,sigmaInf,prismAttachmentMPerS,
     basalAttachmentMPerS,boundaries,iceCells,...rest});
+  s.seedSolidMask=new Uint8Array(s.solid);
   s.iceFraction=new Float64Array(s.solid.length);
   s.iceMassAtCellKg=new Float64Array(s.solid.length);
   s.rhoIce=iceIhProperties(Tinf,Math.min(pressurePa,210e6)).rho;
@@ -96,7 +97,7 @@ export function fiveLayerDiagnostics(s){
       if(!s.hexMask[p])continue;
       const k=z*s.nxy+p,ph=s.iceFraction[k];
       if(ph>0)occupied++;
-      if(ph>0&&!s.seedCell?.[k]&&!s.solidSeedMask?.[k])grown++;
+      if(ph>0&&!s.seedSolidMask[k])grown++;
       iceMass+=s.iceMassAtCellKg[k];
       gas+=s.c[k]*s.volume*(1-ph);
     }
