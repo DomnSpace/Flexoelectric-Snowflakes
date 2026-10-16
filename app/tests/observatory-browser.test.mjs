@@ -182,7 +182,36 @@ try{
   assert.equal(await page.locator('#viewport').getAttribute('data-ice-slices'),'5');
   await mkdir(resolve('artifacts'),{recursive:true});
   await page.screenshot({path:'artifacts/snowflake-observatory.png',fullPage:true,animations:'disabled'});
-  assert.deepEqual(errors,[],'no browser script/console errors');
+  // Distinct scientific model B runs in its own page; the legacy 3D viewer
+  // remains fully functional and unchanged.
+  const lab=await browser.newPage({viewport:{width:1400,height:950}});
+  const labErrors=[];
+  lab.on('pageerror',err=>labErrors.push(err.message));
+  lab.on('console',msg=>{if(msg.type()==='error')labErrors.push(msg.text());});
+  await lab.goto('http://127.0.0.1:8088/app/layered-lab.html',
+    {waitUntil:'domcontentloaded'});
+  await lab.waitForFunction(()=>document.querySelector('#status')?.textContent.includes('READY'),
+    {timeout:45000});
+  assert.equal(await lab.locator('.panes canvas').count(),5);
+  assert.match(await lab.locator('h1').innerText(),/FIVE-LAYER/);
+  const initialLabTime=await lab.locator('#time').innerText();
+  await lab.locator('#step').click({timeout:60000});
+  await lab.waitForFunction(()=>!document.querySelector('#step').disabled &&
+    document.querySelector('#status').textContent.includes('COMPUTED'),
+    {timeout:60000});
+  assert.notEqual(await lab.locator('#time').innerText(),initialLabTime);
+  assert.match(await lab.locator('#status').innerText(),/5 DISTINCT PHYSICAL FIELDS/);
+  assert.notEqual(await lab.locator('#mass0').innerText(),await lab.locator('#mass2').innerText(),
+    'exposed top/bottom layer must differ from central in the controlled model B test');
+  const beforeDisplayOnly=await lab.locator('#ice').innerText();
+  await lab.locator('#gain').selectOption('1');
+  assert.equal(await lab.locator('#ice').innerText(),beforeDisplayOnly,
+    'visual contrast must not affect condensed mass');
+  await lab.screenshot({path:'artifacts/snowflake-model-b-layers.png',
+    fullPage:true,animations:'disabled'});
+  assert.deepEqual(labErrors,[],'no model B laboratory runtime errors');
+  await lab.close();
+    assert.deepEqual(errors,[],'no browser script/console errors');
   console.log('observatory-browser.test.mjs PASS',{t0,t1,largeStepMs,download:download.suggestedFilename()});
 }finally{
   await browser.close();
