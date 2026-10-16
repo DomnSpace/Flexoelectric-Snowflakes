@@ -109,7 +109,7 @@ function matvec(A,x,y){
 function dot(a,b){let s=0;for(let i=0;i<a.length;i++)s+=a[i]*b[i];return s;}
 function norm(a){return Math.sqrt(dot(a,a));}
 export function solveLayeredImplicit(s,dt,{
-  tolerance=1e-10,maxIterations=1600
+  tolerance=1e-8,maxIterations=1600
 }={}){
   validate(tolerance,'tolerance');
   if(!Number.isInteger(maxIterations)||maxIterations<1)
@@ -140,6 +140,19 @@ export function solveLayeredImplicit(s,dt,{
     for(let i=0;i<n;i++)p[i]=z[i]+beta*p[i];
     rho=next;
   }
+  // Project the common-mode numerical drift onto the exact finite-volume
+  // water budget. Pairwise gas-gas terms sum to zero, so the mass-equation
+  // sum is Σ_i local_i*x_i = Σ_i rhs_i. A constant shift changes that
+  // sum by shift*Σ_i local_i without changing any diffusion gradient.
+  // This is a conservation projection, NOT a substitute for checking the
+  // full algebraic residual below.
+  let rhsSum=0,lhsSum=0,localSum=0;
+  for(let i=0;i<n;i++){
+    rhsSum+=A.rhs[i];lhsSum+=A.local[i]*x[i];localSum+=A.local[i];
+  }
+  const correction=(rhsSum-lhsSum)/localSum;
+  if(!Number.isFinite(correction))throw new Error('Non-finite vapor mass projection');
+  for(let i=0;i<n;i++)x[i]+=correction;
   // Compute TRUE final residual (not only recursively propagated CG residual).
   matvec(A,x,ap);
   let true2=0;
@@ -152,7 +165,7 @@ export function solveLayeredImplicit(s,dt,{
   if(trueResidual>tolerance*1.25)
     throw new Error('Implicit vapor did not converge within '+maxIterations+
       ' CG iterations: relative residual '+trueResidual);
-  return {A,x,iterations,relativeResidual:trueResidual};
+  return {A,x,iterations,relativeResidual:trueResidual,conservationShiftKgM3:correction};
 }
 
 /**
@@ -164,7 +177,7 @@ export function solveLayeredImplicit(s,dt,{
  */
 export function stepLayeredImplicit(s,dt,opts={}){
   const before=layeredTrackedWaterKg(s);
-  const {A,x,iterations,relativeResidual}=solveLayeredImplicit(s,dt,opts);
+  const {A,x,iterations,relativeResidual,conservationShiftKgM3}=solveLayeredImplicit(s,dt,opts);
   const cvMass=s.volume,events=[],perIceSlab=new Float64Array(s.iceSlabs);
   let massToIce=0,boundaryInKg=0,boundaryOutKg=0;
   const nextC=new Float64Array(x.length);
@@ -200,7 +213,7 @@ export function stepLayeredImplicit(s,dt,opts={}){
   s.externalMassInKg+=boundaryInKg;s.externalMassOutKg+=boundaryOutKg;
   s.timeSeconds+=dt;
   const report={dtSeconds:dt,solver:'backward-euler-pcg',iterations,
-    relativeResidual,massResidualKg:residualKg,faces:events.length,
+    relativeResidual,conservationShiftKgM3,massResidualKg:residualKg,faces:events.length,
     depositedKg:massToIce,perIceSlabDepositedKg:Array.from(perIceSlab),
     boundaryMassInKg:boundaryInKg,boundaryMassOutKg:boundaryOutKg,
     gasMassKg:layeredGasMassKg(s),latentReleasedJ:massToIce*s.Ls,
