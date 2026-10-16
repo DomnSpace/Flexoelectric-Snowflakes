@@ -20,7 +20,16 @@ try{
     ' / console: '+errors.join(' | '));
   assert.match(await page.locator('#status').innerText(),/SOLVER RUNNING/);
   assert.equal(await page.locator('#viewport canvas').count(),1,'WebGL canvas mounted');
-  assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),73,'numeric field raster');
+  assert.equal(await page.locator('#topology').inputValue(),'triangular',
+    'triangular lattice is the startup default');
+  assert.equal(await page.locator('#kineticPhase').inputValue(),'30',
+    'stellar candidate starts with experimentally favored 30-degree orientation');
+  assert.equal(await page.locator('#sigma').inputValue(),'14');
+  assert.equal(await page.locator('#gridSize').inputValue(),'129');
+  assert.equal(await page.locator('#sdak').isChecked(),true);
+  assert.equal(await page.locator('#electricEnabled').isChecked(),false);
+  assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),1024,
+    'hi-res triangular phase display renders from real physical grid');
   for(const id of ['radialGraph','growthGraph','modeGraph']){
     const dims=await page.locator('#'+id).evaluate(el=>[el.width,el.height]);
     assert.ok(dims[0]>20&&dims[1]>20,'chart '+id+' has dimensions');
@@ -71,6 +80,10 @@ try{
   assert.equal(await page.locator('#pending').isVisible(),true,'parameter changes must be pending');
   await page.locator('#apply').click();
   assert.equal(await page.locator('#pending').isVisible(),false,'apply resets model');
+  // The electric Poisson branch remains a separate Cartesian experiment;
+  // switching to it must not silently enable electric effects on the hex grid.
+  await page.locator('#topology').selectOption('square');
+  await page.locator('#apply').click();
   // Exercise the optional electrostatic experiment with a physically
   // computed potential, rather than trusting only the new DOM controls.
   await page.locator('#electricEnabled').check();
@@ -99,6 +112,8 @@ try{
   await page.locator('#habit').selectOption('dendrite');
   await page.locator('#preset').click();
   assert.equal(await page.locator('#topology').inputValue(),'triangular');
+  assert.equal(await page.locator('#kineticPhase').inputValue(),'30',
+    'reloading dendrite must not reset the intended orientation to zero');
   assert.equal(await page.locator('#gridSize').inputValue(),'129');
   assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),1024,
     'triangular field uses display-only 1024-pixel interpolation, not solver-cell raster');
@@ -124,6 +139,8 @@ try{
   assert.equal(await page.locator('#gridSize').inputValue(),'97');
   assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),1024);
   assert.equal(await page.locator('#topology').inputValue(),'triangular');
+  assert.equal(await page.locator('#kineticPhase').inputValue(),'0',
+    'compact plate remains a genuine 0-degree comparison control');
   assert.equal(Number(await page.locator('#basalA').inputValue()),.009);
   assert.match(await page.locator('#domainStatus').innerText(),/VALIDITY|CAUTION/);
   assert.equal(await page.locator('#errorOverlay').isVisible(),false);
