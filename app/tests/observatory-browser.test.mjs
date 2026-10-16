@@ -209,7 +209,9 @@ try{
     {waitUntil:'domcontentloaded'});
   await lab.waitForFunction(()=>document.querySelector('#status')?.textContent.includes('READY'),
     {timeout:45000});
-  assert.equal(await lab.locator('.panes canvas').count(),5);
+  assert.equal(await lab.locator('#thermalMode').inputValue(),'coupled',
+    'independent Model B laboratory now starts with physical heat transport');
+    assert.equal(await lab.locator('.panes canvas').count(),5);
   assert.match(await lab.locator('h1').innerText(),/FIVE-LAYER/);
   const initialLabTime=await lab.locator('#time').innerText();
   await lab.locator('#step').click({timeout:60000});
@@ -218,13 +220,29 @@ try{
     {timeout:60000});
   assert.notEqual(await lab.locator('#time').innerText(),initialLabTime);
   assert.match(await lab.locator('#status').innerText(),/5 DISTINCT PHYSICAL FIELDS/);
+  assert.ok(parseFloat(await lab.locator('#maxTemp').innerText())>0,
+    'real latent deposition must create a computed thermal field');
+  assert.match(await lab.locator('#heatBalance').innerText(),/J/,
+    'the heat-energy residual must be reported separately from water mass');
   assert.notEqual(await lab.locator('#mass0').innerText(),await lab.locator('#mass2').innerText(),
     'exposed top/bottom layer must differ from central in the controlled model B test');
   const beforeDisplayOnly=await lab.locator('#ice').innerText();
+  await lab.locator('#mapMode').selectOption('temperature');
+  assert.equal(await lab.locator('#ice').innerText(),beforeDisplayOnly,
+    'switching to computed temperature visualization must not alter ice growth');
+  await lab.locator('#mapMode').selectOption('ice');
   await lab.locator('#gain').selectOption('1');
   assert.equal(await lab.locator('#ice').innerText(),beforeDisplayOnly,
     'visual contrast must not affect condensed mass');
-  await lab.screenshot({path:'artifacts/snowflake-model-b-layers.png',
+  await lab.locator('#thermalMode').selectOption('off');
+  assert.equal((await lab.locator('#maxTemp').innerText()).trim(),'OFF');
+  await lab.locator('#step').click({timeout:60000});
+  await lab.waitForFunction(()=>!document.querySelector('#step').disabled &&
+    document.querySelector('#status').textContent.includes('COMPUTED'),
+    {timeout:60000});
+  assert.match(await lab.locator('#status').innerText(),/NO-HEAT CONTROL/);
+  await lab.locator('#thermalMode').selectOption('coupled');
+    await lab.screenshot({path:'artifacts/snowflake-model-b-layers.png',
     fullPage:true,animations:'disabled'});
   assert.deepEqual(labErrors,[],'no model B laboratory runtime errors');
   await lab.close();
