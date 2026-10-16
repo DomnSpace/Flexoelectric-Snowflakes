@@ -60,7 +60,10 @@ function draw(){
   for(let l=0;l<5;l++){
     const seed=state.seedSolidMask.subarray((k+l)*state.nxy,(k+l+1)*state.nxy);
     const active=drawLayer($('layer'+l),maps[l],seed);
-    $('mass'+l).textContent=nformat(diag.massKg[l])+' kg · '+active+' newly occupied sites';
+    const newlyDeposited=state.iceDepositionPerSlabKg[k+l];
+    $('mass'+l).textContent=nformat(diag.massKg[l])+
+      ' kg total · +'+nformat(newlyDeposited)+' kg deposited · '+
+      active+' newly occupied sites';
   }
   const gains=Array.from(state.iceDepositionPerSlabKg.slice(k,k+5));
   const max=Math.max(...gains,1e-99);
