@@ -17,6 +17,7 @@ import {createLayeredGasFV,layeredGasIndex,axialHexRadius}
 import {layeredImplicitGasMassKg,layeredImplicitTrackedWaterKg,
   stepLayeredImplicit} from './layered-vapor-implicit.js';
 import {iceIhProperties} from './ice-ih-eos.js';
+import {attachLayeredThermal,stepLayeredThermal} from './layered-thermal.js';
 
 const DIR=[[1,0],[-1,0],[0,1],[0,-1],[1,-1],[-1,1]];
 const closeTo=(a,b)=>Math.abs(a-b)<=Math.max(1e-26,1e-8*Math.max(a,b));
@@ -40,6 +41,7 @@ export function createFiveLayerCrystal({
   N=21,dx=.75e-6,dz=.75e-6,gasHaloSlabs=2,seedRadiusCells=1,
   seedLayerIndices=[0,1,2,3,4],
   Tinf=258.15,pressurePa=101325,sigmaInf=.14,
+  thermalCoupling=false,
   prismAttachmentMPerS=5e-3,basalAttachmentMPerS=5e-3,
   boundaries={lateral:'reservoir',top:'reservoir',bottom:'reservoir'},
   ...rest
@@ -75,6 +77,7 @@ export function createFiveLayerCrystal({
     s.iceFraction[k]=1;
     s.iceMassAtCellKg[k]=s.cellIceCapacityKg;
   }
+  if(thermalCoupling)attachLayeredThermal(s);
   return s;
 }
 export function fiveLayerIceMassKg(s){
@@ -171,6 +174,10 @@ export function stepFiveLayerCrystal(s,dt,{tolerance=1e-8,maxIterations=1600}={}
   const startIceMass=fiveLayerIceMassKg(s);
   const report=stepLayeredImplicit(s,dt,{tolerance,maxIterations});
   const growth=settleFiveLayerFront(s,report.depositionEvents);
+  // Solve thermodynamics only after the mass-conserving phase movement:
+  // updated cell heat capacities use the NEW local ice fraction while
+  // the prior enthalpy is carried unchanged through that volume change.
+  const heat=s.thermal?stepLayeredThermal(s,dt,report.depositionEvents):null;
   const after=layeredImplicitTrackedWaterKg(s);
   const expected=report.boundaryMassInKg-report.boundaryMassOutKg;
   const difference=(after-before)-expected;
@@ -185,5 +192,6 @@ export function stepFiveLayerCrystal(s,dt,{tolerance=1e-8,maxIterations=1600}={}
     independentLayerMaps:true,
     layerDiagnostics:fiveLayerDiagnostics(s),
     postGrowthBudgetResidualKg:difference,
-    heatTransportSolved:false,iceVolumeClosure:'coarse voxel fraction + displaced-vapor exchange'};
+    heatTransportSolved:Boolean(heat),thermal:heat,
+    iceVolumeClosure:'coarse voxel fraction + displaced-vapor exchange'};
 }
