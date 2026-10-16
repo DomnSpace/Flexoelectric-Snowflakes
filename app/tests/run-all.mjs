@@ -16,6 +16,7 @@ const tests = [
   './pass7-snapshot-layers.test.mjs',
   './five-layer-baseline.test.mjs',
   './layered-gas-fv.test.mjs',
+  './layered-implicit.test.mjs',
   './electric25d.test.mjs',
   './fieldlines.test.mjs',
 ];
