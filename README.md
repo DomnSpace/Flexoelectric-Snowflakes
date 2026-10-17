@@ -69,6 +69,10 @@ A backward-Euler implicit solver replaces Step 2's nanosecond-limited explicit t
 
 **No new vertical ice growth, local solved thickness or vapor competition is claimed by Step 1.** The five transparent layers remain explicitly labeled a uniform-slab preview. Model B's conservative gas/ice face-flux interface is the next implementation gate; the original solver and current GitHub Pages remain intact.
 
+## Pass 8 — Local ice thickness and explicit prism/basal ice-mass ledger
+
+[PASS8_LOCAL_HEIGHT.md](PASS8_LOCAL_HEIGHT.md) documents the **opt-in** locally varying ice `hTop`/`hBottom` model on the triangular lattice. It computes actual local mass from the phase fraction and thickness, adds both prism and basal deposits to latent heat, tracks distinct external planar and unresolved z-direction vapor supplies, and records an ice-side mass ledger residual. **This is not a fully conservative 3-D vapor-ice solution**: the vertical reservoir has no resolved concentration/thermal PDE. In the Observatory, enable **Resolve local upper/lower ice heights**, apply the solver, then choose **Spatial Fields → Local ice thickness h**. Five optical sheets remain a *mean-thickness visual proxy* until Pass 9.
+
 ## Pass 7 — Versioned ice snapshots and five transparent layers
 
 [PASS7_STATE_AND_LAYERS.md](PASS7_STATE_AND_LAYERS.md) describes the versioned SI snapshot boundary, a render-only **five-sheet preview** at five physically spaced z elevations, and tests that the solver's deposition, heating and fields remain unchanged. In the Observatory, switch **ICE VIEW → 5 translucent height slices · preview** to compare with the legacy solid slab without resetting the simulation. The five sheets **currently share the same measured basal contour** because the original solver has only one uniform height. This is an honest optical preview for Pass 8's locally varying mass-conserving height model, **not** a calculated set of internal crystal ribs.
