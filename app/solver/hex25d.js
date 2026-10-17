@@ -362,7 +362,7 @@ export function resolvedHexLocalHeightStep(state,dt,{vaporIterations=45,heatIter
       g.theta,kinetic.anisotropy6??0,kinetic.kineticPhaseDeg??0),0,1);
     const Rdiff=dx/(2*Math.max(1e-30,Dv));
     const Rkin=ceq/Math.max(1e-30,rhoIce*alpha*vkin);
-    const flux=Math.max(0,cgas-ceq)/(Rdiff+Rkin);
+    const flux=alpha>0?Math.max(0,cgas-ceq)/(Rdiff+Rkin):0;
     updates.push([k,flux*linkedArea*dt,top,bottom]);
     meanSigma+=driving;alphaSum+=alpha;
     curvatureSum+=g.curvature;capillarySum+=exponent;interfaces++;
@@ -391,7 +391,7 @@ export function resolvedHexLocalHeightStep(state,dt,{vaporIterations=45,heatIter
     const alpha=attachmentCoefficient(driving,kinetic.basal);
     const Rdiff=Math.max(dx,depth*.5)/Math.max(1e-30,Dv);
     const Rkin=ceq/Math.max(1e-30,rhoIce*alpha*vkin);
-    const flux=Math.max(0,cVertical-ceq)/(Rdiff+Rkin);
+    const flux=alpha>0?Math.max(0,cVertical-ceq)/(Rdiff+Rkin):0;
     const admitted=acceptBasalMass(state,k,flux,dt,rhoIce);
     if(admitted===0)continue;
     basalKg+=admitted;basalSpeed+=admitted/
