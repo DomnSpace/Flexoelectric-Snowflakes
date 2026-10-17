@@ -674,7 +674,10 @@ function downloadCsv(){
   const columns=['time_s','radius_um','mean_radius_um','half_thickness_um','deposited_mass_pg','latent_energy_J','max_dT_mK','m4_relative','m6_relative','m12_relative','mean_interface_sigma','mean_prism_alpha','alpha_basal','interface_cells','mass_rate_pg_s','basal_velocity_um_s','mean_curvature_per_um','mean_capillary_exponent',
     'max_electric_field_MV_m','flexoelectric_P_uC_m2','mean_dielectric_log_shift','poisson_residual_V','electric_coupled',
     'domain_um','tip_radius_um','halo_cells','thickness_um','halfthickness_over_tipradius','domain_stop','water_saturation_ice_percent','habit',
-    'topology','domain_expansions','kinetic_phase_deg','surface_epsilon','seed_shape','seed_phase_deg'];
+    'topology','domain_expansions','kinetic_phase_deg','surface_epsilon','seed_shape','seed_phase_deg',
+    'snapshot_schema_version','local_height_active','physical_ice_mass_pg','prism_in_pg','external_vertical_basal_in_pg',
+    'prism_mass_rate_pg_s','basal_mass_rate_pg_s','thickness_mean_um','thickness_max_um',
+    'ice_ledger_residual_fg','ice_ledger_relative_residual','vertical_vapor_transport_solved'];
   const rows=[columns.join(',')];
   for(const s of frames){
     const b=s.budget||{},m=s.morph;
@@ -686,7 +689,18 @@ function downloadCsv(){
       b.meanElectricLogShift??0,s.eDiagnostics?.residualRmsV??'',s.eCoupled?1:0,
       s.audit.domainUm,s.audit.tipRadiusUm,s.audit.haloCells,s.audit.thicknessUm,s.audit.plateRatio,
       s.audit.stop?1:0,s.waterSaturationPercent,s.habit,s.topology,s.expansions,b.kineticPhaseDeg??'',b.surfaceEnergyEpsilon??'',
-      b.seedShape??'',b.seedRotationDeg??''];
+      b.seedShape??'',b.seedRotationDeg??'',
+      s.snapshotSchema.version,s.snapshotSchema.version===2?1:0,
+      s.iceStructure.iceMassKg===undefined?'':pg(s.iceStructure.iceMassKg),
+      s.iceStructure.ledgerPrismKg===undefined?'':pg(s.iceStructure.ledgerPrismKg),
+      s.iceStructure.ledgerBasalKg===undefined?'':pg(s.iceStructure.ledgerBasalKg),
+      b.prismMassRate===undefined?'':pg(b.prismMassRate),
+      b.basalMassRate===undefined?'':pg(b.basalMassRate),
+      s.snapshotSchema.version===2?um(s.iceStructure.physicalTotalThicknessM):'',
+      s.snapshotSchema.version===2?um(s.iceStructure.maxLocalThicknessM):'',
+      s.iceStructure.ledgerResidualKg===undefined?'':s.iceStructure.ledgerResidualKg*1e15,
+      b.relativeMassResidual??'',
+      s.iceStructure.verticalVaporTransportSolved?1:0];
     rows.push(values.map(v=>v??'').join(','));
   }
   download('snowflake-observatory-'+new Date().toISOString().slice(0,10)+'.csv','text/csv;charset=utf-8',rows.join('\r\n')+'\r\n');
