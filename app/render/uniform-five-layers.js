@@ -7,6 +7,7 @@
  * The pure plan is tested without Three.js; the WebGL adapter is render-only.
  */
 import {verifyIceSnapshot} from '../solver/ice-snapshot-v1.js';
+import {verifyLocalIceSnapshot} from '../solver/ice-snapshot-v2.js';
 
 export const FIVE_LAYER_COUNT=5;
 export const FIVE_LAYER_OPACITY=0.245;
@@ -15,19 +16,24 @@ const finite=(v)=>Number.isFinite(v);
 
 /** Five planes: z=-h,-h/2,0,+h/2,+h. No invented height gradient. */
 export function makeUniformLayerPlan(frame){
-  verifyIceSnapshot(frame);
+  const local=frame.snapshotSchema?.version===2;
+  if(local)verifyLocalIceSnapshot(frame);
+  else verifyIceSnapshot(frame);
+  // Pass 9 will replace these five identical outlines by true iso-z loops.
+  // When local heights exist, this is explicitly a MEAN-height optical guide.
   const h=frame.iceStructure.physicalHalfThicknessM;
   const radius=frame.morph.radius;
   if(radius.length<6||!Array.from(radius).every(v=>finite(v)&&v>=0))
     throw new RangeError('Invalid modeled basal-plane contour');
   return Object.freeze({
-    mode:'uniform-five-layer-preview',
+    mode:local?'mean-height-guide-not-local-slices':'uniform-five-layer-preview',
     representation:frame.iceStructure.representation,
     physicalThicknessM:2*h,
     sliceCount:FIVE_LAYER_COUNT,
     eachSliceOpacity:FIVE_LAYER_OPACITY,
     contourSource:'modeled-phase-isocontour',
-    physicalLocalHeightSolved:false,
+    physicalLocalHeightSolved:local,
+    sliceGeometryFromLocalHeight:false,
     layers:Object.freeze(FIVE_LAYER_Z_FRACTIONS.map((fraction,index)=>Object.freeze({
       index,zM:fraction*h,relativeZ:fraction,
       opacity:FIVE_LAYER_OPACITY,
