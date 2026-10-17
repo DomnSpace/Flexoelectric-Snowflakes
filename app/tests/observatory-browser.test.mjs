@@ -106,6 +106,34 @@ try{
     'real basal flux arrives from the explicitly open z reservoir');
   assert.match(await page.locator('#bMassResidual').innerText(),/OPEN SOURCE/);
   assert.match(await page.locator('#bLocalHeight').innerText(),/µm/);
+  assert.equal(await page.locator('#iceView option[value="localSolid"]').isDisabled(),false);
+  assert.equal(await page.locator('#iceView').inputValue(),'localSolid',
+    'v2 height solver starts in true local top/bottom surface mode');
+  assert.equal(await page.locator('#viewport').getAttribute('data-height-source'),
+    'snapshot-v2-physical-top-bottom');
+  assert.ok(Number(await page.locator('#viewport').getAttribute('data-height-mesh-triangles'))>0);
+  assert.match(await page.locator('#heightGeometry').innerText(),/LOCAL TOP\/BOTTOM/);
+  const heightRenderBefore={
+    mass:await page.locator('#kMass').innerText(),
+    time:await page.locator('#kTime').innerText()
+  };
+  await page.locator('#iceView').selectOption('localFive');
+  assert.equal(await page.locator('#viewport').getAttribute('data-ice-slices'),'5');
+  assert.match(await page.locator('#viewLabel').innerText(),/TRUE ISO-z/);
+  assert.equal(await page.locator('#viewport').getAttribute('data-height-source'),
+    'snapshot-v2-physical-top-bottom');
+  const sliceHeights=await page.locator('#viewport').evaluate(el=>{
+    const label=el.querySelector('#not-real-mesh');
+    return {source:el.dataset.heightSource,count:el.dataset.iceSlices,
+      triangles:Number(el.dataset.heightMeshTriangles),lod:el.dataset.heightMeshLod};
+  });
+  assert.equal(sliceHeights.count,'5');
+  assert.ok(sliceHeights.triangles>0);
+  await page.locator('#iceView').selectOption('localSolid');
+  assert.deepEqual({
+    mass:await page.locator('#kMass').innerText(),
+    time:await page.locator('#kTime').innerText()
+  },heightRenderBefore,'physical height mesh switches must not modify physics');
   await page.locator('#field').selectOption('thickness');
   assert.match(await page.locator('#fieldMax').innerText(),/µm/);
   assert.match(await page.locator('#fieldFidelity').innerText(),/PHYSICAL LOCAL HEIGHT/);
@@ -126,11 +154,17 @@ try{
   await page.locator('#csv').click();
   const csvP8Download=await csvP8;
   assert.match(csvP8Download.suggestedFilename(),/\.csv$/);
-  await page.locator('#iceView').selectOption('solid');
+  await page.locator('#iceView').selectOption('localFive');
+  assert.equal(await page.locator('#viewport').getAttribute('data-height-source'),
+    'snapshot-v2-physical-top-bottom');
+  await page.locator('#iceView').selectOption('localSolid');
   await page.locator('#field').selectOption('vapor');
   await page.locator('#localHeight').uncheck();
   await page.locator('#apply').click();
   assert.match(await page.locator('#snapshotVersion').innerText(),/v1/);
+  assert.equal(await page.locator('#iceView option[value="localSolid"]').isDisabled(),true);
+  assert.equal(await page.locator('#iceView option[value="localFive"]').isDisabled(),true);
+  assert.notEqual(await page.locator('#iceView').inputValue(),'localSolid');
   assert.equal(await page.locator('#field option[value="thickness"]').isDisabled(),true);
   await page.locator('#topology').selectOption('square');
   await page.locator('#apply').click();
