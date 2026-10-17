@@ -10,6 +10,17 @@ const tests = [
   './nucleation.test.mjs',
   './postseed.test.mjs',
   './growth25d.test.mjs',
+  './habit-domain.test.mjs',
+  './hex25d.test.mjs',
+  './anisotropy-phase.test.mjs',
+  './pass7-snapshot-layers.test.mjs',
+  './pass8-thickness-budget.test.mjs',
+  './five-layer-baseline.test.mjs',
+  './layered-gas-fv.test.mjs',
+  './layered-implicit.test.mjs',
+  './five-layer-ice-front.test.mjs',
+  './layered-thermal.test.mjs',
+  './electric25d.test.mjs',
   './fieldlines.test.mjs',
 ];
 

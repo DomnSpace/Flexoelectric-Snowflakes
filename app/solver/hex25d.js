@@ -1,0 +1,569 @@
+/**
+ * Experimental 2.5-D ice growth on a triangular computational lattice.
+ *
+ * Six equidistant neighbor directions (60° apart), Voronoi control cells
+ * shaped as regular hexagons. These are MICROMETRE transport volumes, NOT
+ * individual hydrogen atoms or a molecular model of ice Ih.
+ *
+ * Axial (q,r) coordinates:
+ *    x = a (q + r/2),  y = a sqrt(3) r/2
+ * with six neighbors ±(1,0), ±(0,1), ±(1,-1).
+ *
+ * The six-neighbor Laplacian for isotropic diffusion is
+ *    ∇²u ≈ [2/(3a²)] (Σ₆ u_neighbor - 6u).
+ *
+ * Hexagonal Dirichlet domain, NOT Cartesian image padding. No free charge,
+ * elastic strain, vertical PDE, electrostatics, airflow, or calibrated SDAK.
+ * Existing Cartesian solver remains independent for A/B comparison.
+ */
+import {diffusivityWaterVaporAir,thermalConductivityAir} from './thermo.js';
+import {iceIhProperties} from './ice-ih-eos.js';
+import {attachmentCoefficient,iceKineticVelocity,saturationMassDensityIce,sublimationEnthalpy} from './postseed.js';
+import {DEFAULT_ICE_KINETICS,capillaryLengthIceVapor} from './growth25d.js';
+import {seedLocalHeight,acceptPrismMass,acceptBasalMass,
+  finishLocalHeightStep,extendLocalHeight,localHeightStats} from './ice-thickness.js';
+
+const PI=Math.PI,RT3=Math.sqrt(3),SQRT3_OVER_2=RT3/2;
+const DIR=Object.freeze([[1,0],[-1,0],[0,1],[0,-1],[1,-1],[-1,1]]);
+const VECT=DIR.map(([q,r])=>[q+r/2,SQRT3_OVER_2*r]);
+const makeOffsets=N=>[1,-1,N,-N,1-N,N-1];
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const RAD=PI/180;
+/**
+ * Kinetic anisotropy depends on the OUTWARD INTERFACE NORMAL, not the
+ * global polar angle of a growing arm. 30° phase swaps the six maxima and
+ * minima exactly, but it is an experiment, not an established cure.
+ */
+export function sixfoldAttachmentMultiplier(theta,amplitude=0,phaseDeg=0){
+  if(!Number.isFinite(phaseDeg)||!Number.isFinite(amplitude))
+    throw new RangeError('Finite sixfold anisotropy parameters required');
+  return Math.max(0,1+amplitude*Math.cos(6*(theta-phaseDeg*RAD)));
+}
+/**
+ * For gamma(theta)=gamma0[1+eps cos 6(theta-phase)], the 2-D
+ * Gibbs–Thomson interface stiffness gamma+gamma'' is gamma0[1-35 eps cos6].
+ * ONLY the weak, positive-stiffness regime is implemented. Strong faceting
+ * (missing orientations) requires a regularized Wulff / phase-field model.
+ */
+export function sixfoldSurfaceStiffness(theta,epsilon=0,phaseDeg=0){
+  if(!Number.isFinite(epsilon)||Math.abs(epsilon)>0.025||!Number.isFinite(phaseDeg))
+    throw new RangeError('Unregularized sixfold surface stiffness needs |epsilon|<=0.025');
+  return 1-35*epsilon*Math.cos(6*(theta-phaseDeg*RAD));
+}
+export function pointInsideHexSeed(x,y,radius,rotationDeg=0){
+  if(radius<=0)return false;
+  const rIn=radius*Math.sqrt(3)/2;
+  for(let k=0;k<6;k++){
+    const angle=(rotationDeg+30+k*60)*RAD;
+    if(x*Math.cos(angle)+y*Math.sin(angle)>rIn+1e-14)return false;
+  }
+  return true;
+}
+const id=(i,j,N)=>j*N+i;
+const valid=(i,j,N)=>i>=0&&j>=0&&i<N&&j<N;
+export const HEX_NEIGHBORS=DIR;
+export const HEX_CELL_AREA_MULTIPLIER=SQRT3_OVER_2;
+
+export function axialToXY(q,r,a){return {x:a*(q+r/2),y:a*SQRT3_OVER_2*r};}
+export function axialRadius(q,r){return Math.max(Math.abs(q),Math.abs(r),Math.abs(q+r));}
+export function axialRoundFromXY(x,y,a){
+  const q=x/a-y/(a*RT3),r=2*y/(a*RT3),s=-q-r;
+  let Q=Math.round(q),R=Math.round(r),S=Math.round(s);
+  const dq=Math.abs(Q-q),dr=Math.abs(R-r),ds=Math.abs(S-s);
+  if(dq>dr&&dq>ds)Q=-R-S;
+  else if(dr>ds)R=-Q-S;
+  else S=-Q-R;
+  return {q:Q,r:R};
+}
+
+export function makeHexGrowthState({
+  N=73,dx=.75e-6,seedRadius=1.5e-6,Tinf=258.15,
+  sigmaInf=.08,pressurePa=101325,basalHalfThickness=1.5e-6,
+  seedShape='circle',seedRotationDeg=0,localHeight=false,
+  kinetics=DEFAULT_ICE_KINETICS
+}={}){
+  if(!Number.isInteger(N)||N<13||N%2!==1)throw new RangeError('Hex grid N must be odd and >= 13');
+  if(!(dx>0&&seedRadius>=0&&sigmaInf>=0&&Tinf>110&&pressurePa>0))throw new RangeError('Invalid hex physical grid/environment');
+  if(!['circle','hex'].includes(seedShape)||!Number.isFinite(seedRotationDeg))
+    throw new RangeError('Invalid seed geometry');
+  const n=N*N,R=(N-1)/2,mask=new Uint8Array(n),ice=new Uint8Array(n);
+  const phi=new Float64Array(n),sigma=new Float64Array(n),dT=new Float64Array(n),heatSource=new Float64Array(n);
+  sigma.fill(sigmaInf);
+  let activeSites=0;
+  for(let j=0;j<N;j++)for(let i=0;i<N;i++){
+    const q=i-R,r=j-R,k=id(i,j,N);if(axialRadius(q,r)>R)continue;
+    mask[k]=1;activeSites++;
+    const {x,y}=axialToXY(q,r,dx);
+    const inside=seedShape==='hex'?
+      pointInsideHexSeed(x,y,seedRadius,seedRotationDeg):
+      Math.hypot(x,y)<=seedRadius;
+    if(inside){ice[k]=1;phi[k]=1;sigma[k]=0;}
+  }
+  // All interior cells have six equidistant neighbors; cache their indices,
+  // avoiding 6× dynamic callbacks per Jacobi sweep on 401² grids.
+  const interior=[],edges=[];
+  for(let j=0;j<N;j++)for(let i=0;i<N;i++){
+    const k=id(i,j,N);if(!mask[k])continue;
+    if(axialRadius(i-R,j-R)===R)edges.push(k);else interior.push(k);
+  }
+  const state={topology:'triangular',N,dx,R,mask,activeSites,
+    interior:Uint32Array.from(interior),edges:Uint32Array.from(edges),
+    ice,phi,sigma,dT,heatSource,Tinf,sigmaInf,pressurePa,
+    basalHalfThickness,seedShape,seedRotationDeg,kinetics:JSON.parse(JSON.stringify(kinetics)),
+    t:0,totalDepositedMass:0,totalLatentHeat:0,lastBudget:null,
+    electric:null,domainExpansions:0};
+  if(localHeight){
+    const rho=iceIhProperties(Tinf,Math.min(pressurePa,210e6)).rho;
+    seedLocalHeight(state,rho);
+    state.localHeight=true;
+  }
+  return state;
+}
+
+export function hexCellAtXY(state,x,y){
+  const a=axialRoundFromXY(x,y,state.dx);
+  const i=a.q+state.R,j=a.r+state.R;
+  if(!valid(i,j,state.N)||!state.mask[id(i,j,state.N)])return -1;
+  return id(i,j,state.N);
+}
+
+function occupied(state,k){return state.ice[k]?1:state.phi[k];}
+function forNeighbor(state,i,j,fn){
+  for(let d=0;d<6;d++){
+    const ii=i+DIR[d][0],jj=j+DIR[d][1];
+    if(!valid(ii,jj,state.N))continue;
+    const k=id(ii,jj,state.N);
+    if(state.mask[k])fn(k,d);
+  }
+}
+function atBoundary(state,i,j){return axialRadius(i-state.R,j-state.R)>=state.R;}
+
+function phaseGradient(state,i,j){
+  let gx=0,gy=0;let count=0;
+  forNeighbor(state,i,j,(k,d)=>{
+    const f=occupied(state,k);
+    gx+=f*VECT[d][0];gy+=f*VECT[d][1];count++;
+  });
+  // centered six-site gradient; regular interior cells have 6 neighbors.
+  return {gx:gx/(3*state.dx),gy:gy/(3*state.dx),count};
+}
+function outwardNormal(state,i,j){
+  const grad=phaseGradient(state,i,j),g=Math.hypot(grad.gx,grad.gy);
+  if(g>1e-10)return {nx:-grad.gx/g,ny:-grad.gy/g,g};
+  const p=axialToXY(i-state.R,j-state.R,state.dx);
+  const radial=Math.hypot(p.x,p.y);
+  return radial>0?{nx:p.x/radial,ny:p.y/radial,g}: {nx:1,ny:0,g};
+}
+
+export function hexInterfaceGeometry(state,i,j){
+  const normal=outwardNormal(state,i,j);
+  let div=0;
+  forNeighbor(state,i,j,(k,d)=>{
+    const nx=outwardNormal(state,k%state.N,Math.floor(k/state.N));
+    div+=nx.nx*VECT[d][0]+nx.ny*VECT[d][1];
+  });
+  const curvature=clamp(div/(3*state.dx),-2/state.dx,2/state.dx);
+  return {...normal,theta:Math.atan2(normal.ny,normal.nx),curvature};
+}
+
+export function hexIsInterface(state,i,j){
+  const k=id(i,j,state.N);
+  if(!state.mask[k]||state.ice[k]||state.phi[k]>=.999||atBoundary(state,i,j))return false;
+  let found=false;
+  forNeighbor(state,i,j,k2=>{if(occupied(state,k2)>.15)found=true;});
+  return found;
+}
+
+/**
+ * Accelerated Jacobi transport on a hex domain. Only the regular interior
+ * enters the stencil; invalid corner cells are never used, and outer-shell
+ * Dirichlet values remain fixed in BOTH ping-pong buffers. Same six-neighbor
+ * equation as the original loop, but avoids allocating closures per site.
+ */
+export function relaxHexScalar(state,field='sigma',iterations=40){
+  const isVapor=field==='sigma';
+  if(!isVapor&&field!=='dT')throw new Error('Unknown hex transport scalar');
+  const {N,dx,Tinf,sigmaInf,ice,heatSource,interior,edges}=state;
+  const source=isVapor?0:dx*dx/(4*thermalConductivityAir(Tinf));
+  const cref=isVapor?saturationMassDensityIce(Tinf):0;
+  let a=new Float64Array(state[field]),b=new Float64Array(a);
+  const boundary=isVapor?sigmaInf:0;
+  for(let n=0;n<edges.length;n++){
+    const k=edges[n];a[k]=boundary;b[k]=boundary;
+  }
+  const offsets=makeOffsets(N);
+  for(let iter=0;iter<iterations;iter++){
+    for(let x=0;x<interior.length;x++){
+      const k=interior[x];
+      if(isVapor&&ice[k]){
+        b[k]=saturationMassDensityIce(Tinf+state.dT[k])/cref-1;
+        continue;
+      }
+      b[k]=(a[k+offsets[0]]+a[k+offsets[1]]+
+            a[k+offsets[2]]+a[k+offsets[3]]+
+            a[k+offsets[4]]+a[k+offsets[5]])/6+
+            (isVapor?0:heatSource[k]*source);
+    }
+    const temp=a;a=b;b=temp;
+  }
+  state[field].set(a);
+  return state;
+}
+
+export function resolvedHexGrowthStep(state,dt,{vaporIterations=45,heatIterations=55}={}){
+  if(!(dt>0&&Number.isFinite(dt)))throw new RangeError('Invalid dt');
+  if(state.localHeight)return resolvedHexLocalHeightStep(state,dt,{vaporIterations,heatIterations});
+  relaxHexScalar(state,'dT',heatIterations);
+  relaxHexScalar(state,'sigma',vaporIterations);
+  const {N,dx,Tinf,pressurePa,ice,phi,sigma,heatSource}=state;
+  const rhoi=iceIhProperties(Tinf,Math.min(pressurePa,210e6)).rho;
+  const cRef=saturationMassDensityIce(Tinf);
+  const Dv=diffusivityWaterVaporAir(Tinf,pressurePa);
+  const vkin=iceKineticVelocity(Tinf,rhoi);
+  const Ls=sublimationEnthalpy(Tinf,pressurePa).Ls;
+  const kParams=state.kinetics;
+  const cellArea=HEX_CELL_AREA_MULTIPLIER*dx*dx;
+  const faceLength=dx/RT3;
+  const depth=2*state.basalHalfThickness;
+  const nextHeat=new Float64Array(heatSource.length),updates=[];
+  let totalMassRate=0,deposit=0,alphaSum=0,sigSum=0,curvatureSum=0,capillarySum=0,count=0;
+  for(let j=1;j<N-1;j++)for(let i=1;i<N-1;i++)if(hexIsInterface(state,i,j)){
+    const k=id(i,j,N);
+    const g=hexInterfaceGeometry(state,i,j);
+    let iceLinks=0,localTemp=0,iceWeight=0,filled=0;
+    forNeighbor(state,i,j,k2=>{
+      const occ=occupied(state,k2);
+      if(occ>.15){iceLinks+=occ;filled++;localTemp+=occ*state.dT[k2];iceWeight+=occ;}
+    });
+    const Ts=Tinf+(iceWeight?localTemp/iceWeight:state.dT[k]);
+    const cSat=saturationMassDensityIce(Ts);
+    const delta=capillaryLengthIceVapor(Ts,rhoi,kParams.gammaIv);
+    // The weak smooth-surface anisotropy is distinct from kinetic alpha.
+    // gamma+gamma'' controls capillary stiffness in a 2-D sharp-interface
+    // approximation, not simply gamma(theta) or an electric potential.
+    const stiffness=sixfoldSurfaceStiffness(g.theta,
+      kParams.surfaceEnergyEpsilon??0,
+      kParams.surfacePhaseDeg??kParams.kineticPhaseDeg??0);
+    const exponent=kParams.capillarity===false?0:delta*stiffness*g.curvature;
+    const cEq=cSat*Math.exp(exponent);
+    const cGas=cRef*Math.max(1e-9,1+sigma[k]);
+    const sigmaDrive=Math.max(0,cGas/cEq-1);
+    let model={...kParams.prism};
+    if(kParams.sdak)model.sigma0*=Math.max(.08,1-(kParams.sdakStrength??.55)*(1-filled/6));
+    const base=attachmentCoefficient(sigmaDrive,model);
+    const alpha=clamp(base*sixfoldAttachmentMultiplier(
+      g.theta,kParams.anisotropy6??0,kParams.kineticPhaseDeg??0),0,1);
+    const Rdiff=dx/(2*Math.max(1e-30,Dv));
+    const Rkin=cEq/Math.max(1e-30,rhoi*alpha*vkin);
+    const flux=Math.max(0,cGas-cEq)/(Rdiff+Rkin);
+    const area=iceLinks*faceLength*depth;
+    const rate=flux*area;
+    const capacity=rhoi*cellArea*depth;
+    const dphi=rate*dt/Math.max(1e-30,capacity);
+    updates.push([k,dphi]);
+    nextHeat[k]+=rate*Ls/Math.max(1e-30,cellArea*depth);
+    totalMassRate+=rate;alphaSum+=alpha;sigSum+=sigmaDrive;
+    curvatureSum+=g.curvature;capillarySum+=exponent;count++;
+  }
+  for(const [k,added] of updates){
+    const prior=phi[k];phi[k]=Math.min(1,prior+added);
+    if(phi[k]>=.999)ice[k]=1;
+    deposit+=(phi[k]-prior)*rhoi*cellArea*depth;
+  }
+  heatSource.set(nextHeat);
+  const meanSigma=count?sigSum/count:0;
+  const alphaBasal=attachmentCoefficient(meanSigma,kParams.basal);
+  const vBasal=alphaBasal*vkin*meanSigma;
+  state.basalHalfThickness+=vBasal*dt;
+  state.totalDepositedMass+=deposit;
+  state.totalLatentHeat+=deposit*Ls;
+  state.t+=dt;
+  let maxDeltaT=0;for(let k=0;k<state.mask.length;k++)if(state.mask[k])maxDeltaT=Math.max(maxDeltaT,state.dT[k]);
+  state.lastBudget={
+    totalMassRate,deposited:deposit,Ls,rhoIce:rhoi,Dv,cRef,vkin,meanSigma,
+    meanPrismAlpha:count?alphaSum/count:0,alphaBasal,vBasal,
+    interfaceCells:count,maxDeltaT,
+    meanCurvature:count?curvatureSum/count:0,
+    meanCapillaryExponent:count?capillarySum/count:0,
+    meanElectricLogShift:0,maxElectricLogShift:0,
+    maxElectricFieldVM:0,maxFlexoPolarizationCm2:0,electricResidualRmsV:0,
+    stencil:'six-equidistant-triangular',orientation:'six-site-phase-gradient',
+    lattice:'mesoscopic transport mesh, NOT H-bond positions',
+    kineticPhaseDeg:kParams.kineticPhaseDeg??0,
+    surfaceEnergyEpsilon:kParams.surfaceEnergyEpsilon??0,
+    surfacePhaseDeg:kParams.surfacePhaseDeg??kParams.kineticPhaseDeg??0,
+    seedShape:state.seedShape,seedRotationDeg:state.seedRotationDeg
+  };
+  return state;
+}
+
+/**
+ * Continuous piecewise-linear interpolation on the actual equilateral
+ * triangular grid. No new degrees of freedom: values are interpolated from
+ * the three surrounding solver sites. Used for field display and iso-contour
+ * extraction only, never fed back into the physical step.
+ */
+/**
+ * Opt-in Pass 8 height-resolved ice-side reduced model.
+ *
+ * The unchanged 2-D diffusion/thermal relaxations supply the prism faces.
+ * Basal top/bottom receive mass from an explicit external vertical reservoir
+ * with a finite diffusion resistance; vapor is NOT depleted in a solved z PDE.
+ * All admitted masses change the actual local phase-volume and are counted in
+ * the open-reservoir ledger and latent heat source exactly once.
+ */
+export function resolvedHexLocalHeightStep(state,dt,{vaporIterations=45,heatIterations=55}={}){
+  if(!state.localHeight||!state.topHeight)throw new Error('Not a local-height model');
+  if(!(dt>0&&Number.isFinite(dt)))throw new RangeError('Invalid dt');
+  relaxHexScalar(state,'dT',heatIterations);
+  relaxHexScalar(state,'sigma',vaporIterations);
+  const {N,dx,Tinf,pressurePa,ice,phi,sigma,heatSource}=state;
+  const rhoIce=iceIhProperties(Tinf,Math.min(pressurePa,210e6)).rho;
+  const cref=saturationMassDensityIce(Tinf);
+  const Dv=diffusivityWaterVaporAir(Tinf,pressurePa);
+  const vkin=iceKineticVelocity(Tinf,rhoIce);
+  const Ls=sublimationEnthalpy(Tinf,pressurePa).Ls;
+  const kinetic=state.kinetics,area=HEX_CELL_AREA_MULTIPLIER*dx*dx;
+  const face=dx/RT3,source=new Float64Array(heatSource.length);
+  const updates=[];
+  let meanSigma=0,alphaSum=0,curvatureSum=0,capillarySum=0,interfaces=0;
+  // First: prism accretion at in-plane ice/vapor interfaces.
+  for(let j=1;j<N-1;j++)for(let i=1;i<N-1;i++){
+    if(!hexIsInterface(state,i,j))continue;
+    const k=id(i,j,N),g=hexInterfaceGeometry(state,i,j);
+    let linkedArea=0,weightedTop=0,weightedBottom=0,linked=0,TsHeat=0,gasLinks=0;
+    forNeighbor(state,i,j,k2=>{
+      const occupancy=ice[k2]?1:phi[k2];
+      if(occupancy<=.15)return;
+      const top=state.topHeight[k2],bottom=state.bottomHeight[k2];
+      if(!(top>bottom))return;
+      const weight=occupancy,depth=top-bottom;
+      linkedArea+=weight*depth*face;
+      weightedTop+=weight*top;weightedBottom+=weight*bottom;
+      TsHeat+=weight*state.dT[k2];linked+=weight;gasLinks++;
+    });
+    if(!(linked>0&&linkedArea>0))continue;
+    const top=weightedTop/linked,bottom=weightedBottom/linked;
+    const Ts=Tinf+TsHeat/linked;
+    const cSat=saturationMassDensityIce(Ts);
+    const d0=capillaryLengthIceVapor(Ts,rhoIce,kinetic.gammaIv);
+    const stiffness=sixfoldSurfaceStiffness(g.theta,
+      kinetic.surfaceEnergyEpsilon??0,
+      kinetic.surfacePhaseDeg??kinetic.kineticPhaseDeg??0);
+    const exponent=kinetic.capillarity===false?0:d0*stiffness*g.curvature;
+    const ceq=cSat*Math.exp(exponent);
+    const cgas=cref*Math.max(1e-9,1+sigma[k]);
+    const driving=Math.max(0,cgas/ceq-1);
+    const prism={...kinetic.prism};
+    if(kinetic.sdak)prism.sigma0*=Math.max(.08,
+      1-(kinetic.sdakStrength??.55)*(1-gasLinks/6));
+    const base=attachmentCoefficient(driving,prism);
+    const alpha=clamp(base*sixfoldAttachmentMultiplier(
+      g.theta,kinetic.anisotropy6??0,kinetic.kineticPhaseDeg??0),0,1);
+    const Rdiff=dx/(2*Math.max(1e-30,Dv));
+    const Rkin=ceq/Math.max(1e-30,rhoIce*alpha*vkin);
+    const flux=alpha>0?Math.max(0,cgas-ceq)/(Rdiff+Rkin):0;
+    updates.push([k,flux*linkedArea*dt,top,bottom]);
+    meanSigma+=driving;alphaSum+=alpha;
+    curvatureSum+=g.curvature;capillarySum+=exponent;interfaces++;
+  }
+  let prismKg=0,basalKg=0,basalSpeed=0,basalAlpha=0,basalDrive=0,basalSites=0;
+  for(const [k,mass,top,bottom] of updates){
+    const admitted=acceptPrismMass(state,k,mass,rhoIce,top,bottom);
+    if(admitted===0)continue;
+    prismKg+=admitted;
+    const depth=state.topHeight[k]-state.bottomHeight[k];
+    source[k]+=admitted*Ls/Math.max(1e-30,dt*area*Math.max(depth,dx));
+  }
+  // Second: basal growth at every exposed occupied footprint.
+  // c_bulk is the far-field vapor reservoir in the *unresolved z direction*.
+  // A local thickness-dependent diffusion resistance bounds its delivery.
+  // This is a reduced-order closure, not vertical Poisson/Laplace transport.
+  const cVertical=cref*Math.max(0,1+state.sigmaInf);
+  for(let k=0;k<N*N;k++){
+    if(!state.mask[k])continue;
+    const occupied=ice[k]?1:phi[k];
+    if(occupied<=0)continue;
+    const depth=state.topHeight[k]-state.bottomHeight[k];
+    const Ts=Tinf+state.dT[k];
+    const ceq=saturationMassDensityIce(Ts);
+    const driving=Math.max(0,cVertical/Math.max(1e-30,ceq)-1);
+    const alpha=attachmentCoefficient(driving,kinetic.basal);
+    const Rdiff=Math.max(dx,depth*.5)/Math.max(1e-30,Dv);
+    const Rkin=ceq/Math.max(1e-30,rhoIce*alpha*vkin);
+    const flux=alpha>0?Math.max(0,cVertical-ceq)/(Rdiff+Rkin):0;
+    const admitted=acceptBasalMass(state,k,flux,dt,rhoIce);
+    if(admitted===0)continue;
+    basalKg+=admitted;basalSpeed+=admitted/
+      Math.max(1e-30,dt*area*occupied*2*rhoIce);
+    basalAlpha+=alpha;basalDrive+=driving;basalSites++;
+    source[k]+=admitted*Ls/Math.max(1e-30,
+      dt*area*Math.max(state.topHeight[k]-state.bottomHeight[k],dx));
+  }
+  heatSource.set(source);
+  const accounting=finishLocalHeightStep(state,{
+    rhoIce,Ls,dt,prismKg,basalKg
+  });
+  state.t+=dt;
+  let maxDeltaT=0;
+  for(let k=0;k<state.mask.length;k++)if(state.mask[k])
+    maxDeltaT=Math.max(maxDeltaT,state.dT[k]);
+  state.lastBudget={
+    totalMassRate:(prismKg+basalKg)/dt,
+    prismMassRate:prismKg/dt,basalMassRate:basalKg/dt,
+    deposited:prismKg+basalKg,
+    prismDeposited:prismKg,basalDeposited:basalKg,
+    Ls,rhoIce,Dv,cRef:cref,vkin,
+    meanSigma:interfaces?meanSigma/interfaces:0,
+    meanPrismAlpha:interfaces?alphaSum/interfaces:0,
+    alphaBasal:basalSites?basalAlpha/basalSites:0,
+    vBasal:basalSites?basalSpeed/basalSites:0,
+    basalDrive:basalSites?basalDrive/basalSites:0,
+    interfaceCells:interfaces,maxDeltaT,
+    meanCurvature:interfaces?curvatureSum/interfaces:0,
+    meanCapillaryExponent:interfaces?capillarySum/interfaces:0,
+    maxElectricFieldVM:0,maxFlexoPolarizationCm2:0,
+    meanElectricLogShift:0,maxElectricLogShift:0,electricResidualRmsV:0,
+    localHeight:true,sourceModel:'open xy gas field + unmodelled z reservoir',
+    massResidualKg:accounting.ledgerResidualKg,
+    relativeMassResidual:accounting.relativeLedgerResidual,
+    measuredThicknessMeanM:accounting.meanThicknessM,
+    measuredThicknessMaxM:accounting.maxThicknessM,
+    measuredThicknessMinM:accounting.minThicknessM,
+    totalPhysicalIceMassKg:accounting.physicalMassKg,
+    stencil:'six-equidistant-triangular',
+    kineticPhaseDeg:kinetic.kineticPhaseDeg??0,
+    surfaceEnergyEpsilon:kinetic.surfaceEnergyEpsilon??0,
+    surfacePhaseDeg:kinetic.surfacePhaseDeg??kinetic.kineticPhaseDeg??0,
+    seedShape:state.seedShape,seedRotationDeg:state.seedRotationDeg
+  };
+  return state;
+}
+
+export function sampleHexLinear(state,values,x,y){
+  const a=state.dx,rf=2*y/(a*RT3),qf=x/a-rf/2;
+  const q=Math.floor(qf),r=Math.floor(rf),u=qf-q,v=rf-r;
+  const N=state.N,R=state.R,qi=q+R,rj=r+R;
+  if(qi<0||rj<0||qi+1>=N||rj+1>=N)return NaN;
+  const base=rj*N+qi,mask=state.mask;
+  let k0,k1,k2,w0,w1,w2;
+  if(u+v<=1){
+    k0=base;k1=base+1;k2=base+N;
+    w0=1-u-v;w1=u;w2=v;
+  }else{
+    k0=base+N+1;k1=base+N;k2=base+1;
+    w0=u+v-1;w1=1-u;w2=1-v;
+  }
+  if(!mask[k0]||!mask[k1]||!mask[k2])return NaN;
+  return w0*values[k0]+w1*values[k1]+w2*values[k2];
+}
+
+export function hexGrowthMorphology(state,rays=180){
+  const radii=[],maxR=state.R*state.dx,step=state.dx*.45;
+  let area=0;
+  for(let k=0;k<state.mask.length;k++)if(state.mask[k])area+=occupied(state,k);
+  for(let q=0;q<rays;q++){
+    const theta=2*PI*q/rays;let radius=0;
+    const ct=Math.cos(theta),st=Math.sin(theta);
+    let prev=1,lastR=0;
+    for(let r=0;r<=maxR;r+=step){
+      const val=sampleHexLinear(state,state.phi,r*ct,r*st);
+      if(!Number.isFinite(val))break;
+      if(val>=.15)radius=r;
+      else if(prev>=.15&&r>0){
+        const frac=clamp((prev-.15)/(prev-val),0,1);
+        radius=lastR+(r-lastR)*frac;
+      }
+      prev=val;lastR=r;
+    }
+    radii.push(radius);
+  }
+  const meanRadius=radii.reduce((a,b)=>a+b,0)/rays,modes={};
+  for(const mode of [1,2,3,4,6,8,12]){
+    let a=0,b=0;
+    for(let q=0;q<rays;q++){
+      const theta=2*PI*q/rays,d=radii[q]-meanRadius;
+      a+=d*Math.cos(mode*theta);b+=d*Math.sin(mode*theta);
+    }
+    a*=2/rays;b*=2/rays;
+    modes[mode]={a,b,amplitude:Math.hypot(a,b),
+      relative:meanRadius?Math.hypot(a,b)/meanRadius:0,phase:Math.atan2(-b,a)/mode};
+  }
+  const eqRadius=Math.sqrt(area*HEX_CELL_AREA_MULTIPLIER*state.dx*state.dx/PI);
+  return {radius:radii,meanRadius,modes,m6Amplitude:modes[6].amplitude,
+    m6Phase:modes[6].phase,equivalentBasalRadius:eqRadius,
+    halfThickness:state.basalHalfThickness,
+    aspectRatio:eqRadius/Math.max(1e-30,state.basalHalfThickness)};
+}
+
+export function auditHexDomain(state,{warningCells=12,stopCells=6,plateRatioWarning=.65,plateRatioStop=1.25}={}){
+  let halo=state.R,tip=0,count=0;
+  for(let j=0;j<state.N;j++)for(let i=0;i<state.N;i++){
+    const k=id(i,j,state.N);
+    if(!state.mask[k]||occupied(state,k)<.15)continue;
+    const q=i-state.R,r=j-state.R;
+    halo=Math.min(halo,state.R-axialRadius(q,r));
+    const p=axialToXY(q,r,state.dx);tip=Math.max(tip,Math.hypot(p.x,p.y));
+    count++;
+  }
+  // For the height-resolved variant, guard the *maximum* measured local
+  // thickness instead of its previous diagnostic mean.
+  const maxDepth=state.localHeight?
+    localHeightStats(state,iceIhProperties(state.Tinf,Math.min(state.pressurePa,210e6)).rho).maxThicknessM:
+    2*state.basalHalfThickness;
+  const ratio=(maxDepth/2)/Math.max(state.dx,tip);
+  const stopHalo=halo<=stopCells;
+  const plateWarning=ratio>plateRatioWarning;
+  const plateStop=ratio>plateRatioStop&&state.t>5;
+  const stop=stopHalo||plateStop;
+  return {
+    N:state.N,dx:state.dx,domainUm:(state.N-1)*state.dx*1e6,
+    occupied:count,haloCells:halo,haloUm:halo*state.dx*1e6,
+    tipRadiusUm:tip*1e6,thicknessUm:maxDepth*1e6,
+    plateRatio:ratio,warning:halo<=warningCells||plateWarning,
+    stop,stopHalo,plateWarning,plateStop,
+    reason:stopHalo?'HEXAGONAL FAR-FIELD BOUNDARY TOO CLOSE TO GROWTH FRONT':
+      plateStop?'SHARED-THICKNESS PLATE MODEL INVALID: EXCESSIVE VERTICAL GROWTH':
+      halo<=warningCells?'HEXAGONAL DIRICHLET BOUNDARY MAY SELECT M6':
+      plateWarning?'SHARED-THICKNESS PLATE APPROXIMATION STRETCHED':
+      'WITHIN EXPERIMENTAL HEX-MESH LIMITS'
+  };
+}
+
+/**
+ * Extend the finite transport domain without restarting the crystal.
+ * Conserves ice, phase, heat-source arrays and cumulative mass/time.
+ * Refilled outer vapor/thermal regions are relaxation initial guesses,
+ * not an exact infinite-domain Green's function.
+ */
+export function enlargeHexDomain(state,newN){
+  if(newN<=state.N||newN%2!==1)throw new RangeError('Hex grid must expand by an odd positive size');
+  const next=makeHexGrowthState({
+    N:newN,dx:state.dx,seedRadius:0,Tinf:state.Tinf,
+    sigmaInf:state.sigmaInf,pressurePa:state.pressurePa,
+    basalHalfThickness:state.basalHalfThickness,kinetics:state.kinetics,
+    seedShape:state.seedShape,seedRotationDeg:state.seedRotationDeg,
+    // Height is explicitly transferred AFTER the phase fields are copied;
+    // initializing here would double-count the inherited crystal seed.
+    localHeight:false
+  });
+  const offset=(newN-state.N)/2;
+  for(let j=0;j<state.N;j++)for(let i=0;i<state.N;i++){
+    const old=id(i,j,state.N);
+    if(!state.mask[old])continue;
+    const k=id(i+offset,j+offset,newN);
+    next.ice[k]=state.ice[old];next.phi[k]=state.phi[old];
+    next.sigma[k]=state.sigma[old];next.dT[k]=state.dT[old];
+    next.heatSource[k]=state.heatSource[old];
+  }
+  next.t=state.t;
+  next.totalDepositedMass=state.totalDepositedMass;
+  next.totalLatentHeat=state.totalLatentHeat;
+  next.lastBudget=state.lastBudget?{...state.lastBudget}:null;
+  next.domainExpansions=(state.domainExpansions||0)+1;
+  if(state.localHeight)extendLocalHeight(state,next,offset);
+  // Solve a new field in the enlarged gas domain before the next interface step.
+  relaxHexScalar(next,'dT',100);
+  relaxHexScalar(next,'sigma',100);
+  return next;
+}

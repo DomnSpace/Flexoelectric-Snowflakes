@@ -4,6 +4,14 @@ import {
   makeGrowth25DState, resolvedGrowthStep, growthMorphology,
   DEFAULT_ICE_KINETICS
 } from './solver/growth25d.js';
+import {GROWTH_HABITS, GRID_CHOICES, auditGrowthDomain, modelDomainUm} from './solver/habits25d.js';
+import {saturationVaporPressureWaterMK, saturationVaporPressureIceMK} from './solver/thermo.js';
+import {makeHexGrowthState,resolvedHexGrowthStep,hexGrowthMorphology,
+  auditHexDomain,enlargeHexDomain,hexCellAtXY} from './solver/hex25d.js';
+import {versionIceSnapshot,verifyIceSnapshot} from './solver/ice-snapshot-v1.js';
+import {versionLocalIceSnapshot,verifyLocalIceSnapshot} from './solver/ice-snapshot-v2.js';
+import {iceIhProperties} from './solver/ice-ih-eos.js';
+import {buildUniformLayerGroup,disposeLayerGroup,FIVE_LAYER_COUNT} from './render/uniform-five-layers.js';
 
 /*
  * Snowflake Observatory
@@ -22,38 +30,77 @@ const pg = x => x * 1e12;
 const STEPTIME = 0.5;
 const BASE_STEPS_PER_SECOND = 3;
 const MAX_SNAPSHOTS = 360;
-const ids = ['temp','sigma','pressure','anisotropy','prism','seed','sdak','capillarity'];
+const MAX_STORED_GRID_CELLS=360*73*73; // cap snapshot memory on 401² grids
+const DX=0.75e-6;
+const ids = ['temp','sigma','pressure','anisotropy','prism','basalA','seed','gridSize','kineticPhase','surfaceEpsilon','seedShape','seedPhase','sdak','capillarity','electricEnabled','electricCouple','eField','eAngle','epsIce','bendGradient','bendAngle','muFlexo'];
 const labels = [
   ['temp','tempValue',v => num(v,0)+' °C'],
   ['sigma','sigmaValue',v => num(v,1)+' %'],
   ['pressure','pressureValue',v => num(v,0)+' kPa'],
   ['anisotropy','anisotropyValue',v => num(v,2)],
   ['prism','prismValue',v => num(v,4)],
-  ['seed','seedValue',v => num(v,2)+' µm']
+  ['seed','seedValue',v => num(v,2)+' µm'],
+  ['basalA','basalAValue',v => num(v,3)],
+  ['kineticPhase','kineticPhaseValue',v => num(v,0)+'°'],
+  ['surfaceEpsilon','surfaceEpsilonValue',v => num(v,3)],
+  ['seedPhase','seedPhaseValue',v => num(v,0)+'°'],
+  ['gridSize','gridSizeValue',v => v+' × '+v+' · '+num(modelDomainUm(v,DX),1)+' µm'],
+  ['eField','eFieldValue',v => num(v,2)+' MV/m'],
+  ['eAngle','eAngleValue',v => num(v,0)+'°'],
+  ['epsIce','epsIceValue',v => num(v,1)],
+  ['bendGradient','bendGradientValue',v => num(v,0)+' m⁻¹'],
+  ['bendAngle','bendAngleValue',v => num(v,0)+'°'],
+  ['muFlexo','muFlexoValue',v => num(v,2)+' nC/m']
 ];
 const palette = ['#8de0ff','#b7a9ff','#f9cb8b','#72d8b7','#ff9da5','#e8efff'];
 let state, frames=[], selectedIndex=0, replay=false, playing=true, pending=false;
-let lastFrame=performance.now(), accumulator=0, mesh=null, edge=null, worldScale=1;
+let activeHabit='custom';
+const isHex=()=>state?.topology==='triangular';
+const auditState=()=>isHex()?auditHexDomain(state):auditGrowthDomain(state);
+let lastFrame=performance.now(), accumulator=0, mesh=null, edge=null, layerGroup=null, worldScale=1;
 let scene, camera, controls, renderer, crystal, snowLight;
 let drawCanvas;
 
 function config() {
   const v = id => Number($(id).value);
   return {
-    N: 73, dx: 0.75e-6, Tinf: 273.15 + v('temp'),
+    N: v('gridSize'), dx: DX, Tinf: 273.15 + v('temp'),
     sigmaInf: v('sigma')/100, pressurePa: v('pressure')*1000,
     seedRadius: v('seed')*1e-6, basalHalfThickness: 1.5e-6,
+    seedShape:$('seedShape').value,seedRotationDeg:v('seedPhase'),
+    localHeight:$('localHeight').checked,
     kinetics: {
       prism: {mode:'nucleation',A:1,sigma0:v('prism')},
-      basal: {...DEFAULT_ICE_KINETICS.basal},
-      anisotropy6: v('anisotropy'), sdak:$('sdak').checked,
+      basal: {...DEFAULT_ICE_KINETICS.basal,A:v('basalA')},
+      anisotropy6: v('anisotropy'),
+      kineticPhaseDeg:v('kineticPhase'),
+      surfaceEnergyEpsilon:v('surfaceEpsilon'),
+      surfacePhaseDeg:v('kineticPhase'),
+      sdak:$('sdak').checked,
       sdakStrength:0.55, capillarity:$('capillarity').checked,
       gammaIv:DEFAULT_ICE_KINETICS.gammaIv
+    },
+    electric:{
+      enabled:$('electricEnabled').checked,
+      fieldVM:v('eField')*1e6,angleDeg:v('eAngle'),
+      epsilonIce:v('epsIce'),epsilonAir:1.0006,
+      prescribedGradient:v('bendGradient'),gradientAngleDeg:v('bendAngle'),
+      flexoCoefficient:v('muFlexo')*1e-9,
+      coupleGrowth:$('electricCouple').checked
     }
   };
 }
+function cloudSaturationSigma(tC){
+  const T=273.15+tC;
+  return saturationVaporPressureWaterMK(T)/saturationVaporPressureIceMK(T)-1;
+}
 function formatControls() {
   for(const [id,out,fmt] of labels) $(out).textContent=fmt(Number($(id).value));
+  $('seedShapeValue').textContent=$('seedShape').value==='hex'?'Hexagonal':'Circular';
+  const cap=cloudSaturationSigma(Number($('temp').value));
+  const above=Number($('sigma').value)/100>cap+1e-7;
+  $('waterLimit').textContent=num(cap*100,1)+' % above ice'+(above?' · ABOVE WATER SATURATION':'');
+  $('waterLimit').style.color=above?'#ffcb98':'';
 }
 function setStatus(message, error=false) {
   $('status').textContent=message;
@@ -63,36 +110,72 @@ function setPending(v) {
   pending=v; $('pending').hidden=!v;
 }
 function snap() {
-  const m=growthMorphology(state,180);
-  return {
+  // 720 phase-derived radial samples resolve contour angles without making
+  // the 0.75 µm numerical solver falsely appear atomically resolved.
+  const m=isHex()?hexGrowthMorphology(state,720):growthMorphology(state,180);
+  const sourceFrame={
     t:state.t, n:state.N, dx:state.dx, Tinf:state.Tinf,
+    topology:state.topology||'square',mask:isHex()?new Uint8Array(state.mask):null,
+    expansions:state.domainExpansions||0,
     u:new Float32Array(state.sigma), dT:new Float32Array(state.dT),
     phi:new Float32Array(state.phi), ice:new Uint8Array(state.ice),
+    ePotential:state.electric?new Float32Array(state.electric.potential):null,
+    eMagnitude:state.electric?new Float32Array(state.electric.magnitude):null,
+    eDiagnostics:state.electric?{...state.electric.diagnostics}:null,
+    eEnabled:!!state.electric?.params.enabled,
+    eCoupled:!!state.electric?.params.coupleGrowth,
     morph:{
       radius:m.radius, meanRadius:m.meanRadius, equivalentBasalRadius:m.equivalentBasalRadius,
       halfThickness:m.halfThickness, aspectRatio:m.aspectRatio,
       modes:{4:{...m.modes[4]},6:{...m.modes[6]},12:{...m.modes[12]}}
     },
     budget:state.lastBudget?{...state.lastBudget}:null,
+    audit:auditState(),habit:activeHabit,
+    waterSaturationPercent:cloudSaturationSigma(state.Tinf-273.15)*100,
     deposited:state.totalDepositedMass, energy:state.totalLatentHeat
   };
+  return state.localHeight?
+    versionLocalIceSnapshot(sourceFrame,state,
+      state.lastBudget?.rhoIce||iceIhProperties(state.Tinf,Math.min(state.pressurePa,210e6)).rho):
+    versionIceSnapshot(sourceFrame);
 }
 function current() {return frames[clamp(selectedIndex,0,frames.length-1)];}
 function capture() {
   frames.push(snap());
-  if(frames.length>MAX_SNAPSHOTS) frames.shift();
+  const historyLimit=Math.max(8,Math.min(MAX_SNAPSHOTS,Math.floor(MAX_STORED_GRID_CELLS/(state.N*state.N))));
+  if(frames.length>historyLimit)frames.shift();
   selectedIndex=frames.length-1;
   $('scrub').max=String(frames.length-1);
   $('scrub').value=String(selectedIndex);
 }
 function reset(start=true) {
   try {
-    state=makeGrowth25DState(config());
+    const next=config();
+    if(!GRID_CHOICES.includes(next.N))throw new RangeError('Grid size is not an approved resolution');
+    if($('topology').value==='triangular'){
+      if(next.electric.enabled||next.electric.coupleGrowth)
+        throw new Error('Hexagonal experimental mesh does not support the electric Poisson model yet. Switch to Cartesian.');
+      state=makeHexGrowthState(next);
+    }else{
+      if(next.localHeight)throw new Error('Local height is currently hexagonal-only; disable it for the Cartesian electric solver.');
+      if(next.N>161)throw new Error('Cartesian A/B solver is limited to 120 µm; choose triangular for 300 µm.');
+      state=makeGrowth25DState(next);
+    }
     frames=[];replay=false;playing=start;accumulator=0;
+    // Snapshot schemas are monotonic across each solver run. The selected
+    // physical model changes only via Apply/Restart, not via the view switch.
+    for(const opt of $('field').options){
+      if(opt.value==='thickness')opt.disabled=!state.localHeight;
+    }
+    if(!state.localHeight&&$('field').value==='thickness')$('field').value='vapor';
     $('errorOverlay').hidden=true;
     setPending(false);
     capture();sync();setStatus(start?'SOLVER RUNNING':'SOLVER PAUSED');
-    $('scenario').textContent='ICE · '+num(Number($('temp').value),0)+' °C / '+num(Number($('sigma').value),1)+' %';
+    const selected=GROWTH_HABITS[activeHabit];
+    $('scenario').textContent=(selected?.supported?selected.name.toUpperCase():'CUSTOM EXPERIMENT')+
+      ' · '+num(Number($('temp').value),0)+' °C / '+num(Number($('sigma').value),1)+' %';
+    $('electricReadout').textContent=isHex()?'NOT COUPLED TO TRIANGULAR MESH':
+      state.electric?(state.electric.params.coupleGrowth?'POISSON + DIELECTRIC GROWTH':'POISSON / DIAGNOSTIC ONLY'):'DISABLED';
     $('play').textContent=start?'❚❚ Pause':'▶ Play';
     $('live').classList.add('active');
   } catch(e) { fail(e); }
@@ -107,18 +190,40 @@ function fail(e) {
 function advance() {
   if(!state)return;
   try{
-    // No fabricated growth between steps: each snapshot follows a real solver step.
-    resolvedGrowthStep(state,STEPTIME,{vaporIterations:45,heatIterations:55});
-    capture();sync();
-    const r=current().morph.equivalentBasalRadius;
-    const domain=((state.N-1)/2)*state.dx;
-    if(r > domain*0.90) {
-      playing=false;$('play').textContent='▶ Play';
-      setStatus('DOMAIN EDGE APPROACHING · ENLARGE DOMAIN FOR LONGER RUNS');
+    // Preserve the grown ice, time, vapor fields and cumulative budgets when
+    // expanding the experimental hex mesh (no restart or fake second seed).
+    if(isHex()&&$('autoExpand').checked){
+      const options=GRID_CHOICES, index=options.indexOf(state.N);
+      if(index>=0&&index<options.length-1&&auditHexDomain(state).haloCells<=12){
+        state=enlargeHexDomain(state,options[index+1]);
+        $('gridSize').value=String(state.N);
+        formatControls();
+        $('fieldInspect').textContent='HEX DOMAIN GROWN · '+state.domainExpansions+' EXPANSIONS';
+      }
     }
+    const audit=auditState();
+    if(audit.stop){
+    playing=false;$('play').textContent='▶ Play';
+    setStatus('MODEL DOMAIN STOP · '+audit.reason);
+    return;
+    }
+    // Each model frame advances exactly one resolved transport + deposition step.
+    if(isHex())resolvedHexGrowthStep(state,STEPTIME,{vaporIterations:45,heatIterations:55});
+    else resolvedGrowthStep(state,STEPTIME,{vaporIterations:45,heatIterations:55});
+    capture();sync();
+    const d=current().audit;
+    if(d.stop){
+      playing=false;$('play').textContent='▶ Play';
+      setStatus('MODEL DOMAIN STOP · '+d.reason);
+    }else if(d.warning){
+      setStatus('MODEL VALIDITY WARNING · '+d.reason);
+    }else setStatus(playing?'SOLVER RUNNING':'SOLVER PAUSED');
   } catch(e) {fail(e);}
 }
 function play() {
+  if(state&&auditState().stop&&!(isHex()&&$('autoExpand').checked&&GRID_CHOICES.indexOf(state.N)<GRID_CHOICES.length-1)){
+    playing=false;setStatus('MODEL DOMAIN STOP · CHANGE DOMAIN OR PARAMETERS AND RESTART');return;
+  }
   if(replay){replay=false;selectedIndex=frames.length-1;$('scrub').value=String(selectedIndex);}
   playing=!playing;accumulator=0;
   $('play').textContent=playing?'❚❚ Pause':'▶ Play';
@@ -128,20 +233,43 @@ function play() {
 }
 function sync() {
   const s=current();if(!s)return;
+  if(s.snapshotSchema.version===2)verifyLocalIceSnapshot(s);
+  else verifyIceSnapshot(s);
+  $('snapshotVersion').textContent='v'+s.snapshotSchema.version+' · '+s.snapshotSchema.topology;
+  $('snapshotRepresentation').textContent=s.snapshotSchema.version===2?
+    'LOCAL TOP/BOTTOM · OPEN Z RESERVOIR':'UNIFORM SLAB · NO LOCAL HEIGHT';
   $('kTime').innerHTML=num(s.t,1)+' <small>s</small>';
   $('kRadius').innerHTML=num(um(s.morph.equivalentBasalRadius),2)+' <small>µm</small>';
   $('kMass').innerHTML=num(pg(s.deposited),4)+' <small>pg</small>';
   $('kHeat').innerHTML=num((s.budget?.maxDeltaT||0)*1e3,2)+' <small>mK</small>';
   $('kSix').innerHTML=num((s.morph.modes[6].relative||0)*100,2)+' <small>%</small>';
-  $('sizeLabel').textContent=num(s.n*s.dx*1e6,1)+' µm DOMAIN';
+  $('sizeLabel').textContent=num((s.n-1)*s.dx*1e6,1)+' µm DOMAIN · '+s.n+'²';
   $('stepLabel').textContent='STEP '+String(Math.round(s.t/STEPTIME)).padStart(4,'0');
   $('scrubTime').textContent='t = '+num(s.t,1)+' s';
-  $('gridDim').textContent=s.n+'×'+s.n;
+  $('gridDim').textContent=s.topology==='triangular'
+    ?Math.round(1+3*((s.n-1)/2)*((s.n+1)/2))+' HEX CELLS':s.n+'×'+s.n;
+  $('fieldGeometry').textContent=s.topology==='triangular'
+    ?'TRIANGULAR TRANSPORT / HEX VORONOI · FINITE HEX BOUNDARY SELECTS m6':
+    'SQUARE DIRICHLET FAR-FIELD · ARTIFACTS NEAR EDGES';
+  $('topologyValue').textContent=s.topology==='triangular'?'6-neighbor triangular':'9-point Cartesian';
   $('live').classList.toggle('active',!replay);
   updateBudget(s);
+  updateDomain(s);
   updateMesh(s);
   drawField(s);
   drawAllGraphs(s);
+}
+function updateDomain(s) {
+  const d=s.audit;
+  const label=d.stop?'STOPPED — OUTSIDE VALIDITY':d.warning?'CAUTION — APPROXIMATION': 'VALIDITY MARGIN AVAILABLE';
+  $('domainStatus').textContent=label;
+  $('domainDetails').textContent='TIP '+num(d.tipRadiusUm,1)+' µm · HALO '+num(d.haloUm,1)+
+    ' µm ('+d.haloCells+' cells) · THICKNESS '+num(d.thicknessUm,1)+
+    ' µm · h/r '+num(d.plateRatio,2)+' · '+d.reason+(s.topology==='triangular'?' · EXTENSIONS '+s.expansions:'');
+  $('domainReport').classList.toggle('domain-stop',d.stop);
+  $('domainReport').classList.toggle('domain-warning',d.warning&&!d.stop);
+  $('validity').textContent=d.stop?'STOP · INVALID':d.warning?'WARNING':'MONITORING';
+  $('validity').style.color=d.stop?'#ffa0a0':d.warning?'#ffce91':'';
 }
 function updateBudget(s) {
   const b=s.budget;
@@ -152,7 +280,20 @@ function updateBudget(s) {
     bCells:b?String(b.interfaceCells):'—',
     bCurve:b?num(b.meanCurvature*1e-6,4)+' µm⁻¹':'—',
     bCap:b?num(b.meanCapillaryExponent,6):'—',
-    bFlux:b?num(pg(b.totalMassRate),5)+' pg/s':'—'
+    bPhase:s.topology==='triangular'?num(b?.kineticPhaseDeg??Number($('kineticPhase').value),0)+'°':'CARTESIAN',
+    bStiffness:s.topology==='triangular'?num(b?.surfaceEnergyEpsilon??Number($('surfaceEpsilon').value),3):'CARTESIAN',
+    bFlux:b?num(pg(b.totalMassRate),5)+' pg/s':'—',
+    bPrismFlux:s.snapshotSchema.version===2?num(pg(b?.prismMassRate||0),5)+' pg/s':'LEGACY PRISM ONLY',
+    bBasalFlux:s.snapshotSchema.version===2?num(pg(b?.basalMassRate||0),5)+' pg/s':'UNTRACKED',
+    bLocalHeight:s.snapshotSchema.version===2?
+      num(um(s.iceStructure.physicalTotalThicknessM),3)+' / '+
+      num(um(s.iceStructure.maxLocalThicknessM),3)+' µm':'UNIFORM LEGACY',
+    bMassResidual:s.snapshotSchema.version===2?
+      num(s.iceStructure.ledgerResidualKg*1e15,7)+' fg · OPEN SOURCE':'NO LEDGER',
+    bEField:s.eEnabled?num((s.eDiagnostics?.maxFieldVM||0)*1e-6,4)+' MV/m':'OFF',
+    bPolar:s.eEnabled?num((s.eDiagnostics?.maxPolarization||0)*1e6,4)+' µC/m²':'OFF',
+    bElectricShift:b?num((b.meanElectricLogShift||0)*1e6,5)+' ppm':'—',
+    bEResidual:s.eEnabled?num(s.eDiagnostics?.residualRmsV||0,7)+' V':'OFF'
   };
   for(const [id,value] of Object.entries(fields)) $(id).textContent=value;
 }
@@ -229,8 +370,32 @@ function viewTop(){
 }
 function updateMesh(s) {
   if(!crystal)return;
-  if(mesh){crystal.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();}
-  if(edge){crystal.remove(edge);edge.geometry.dispose();edge.material.dispose();}
+  if(mesh){crystal.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();mesh=null;}
+  if(edge){crystal.remove(edge);edge.geometry.dispose();edge.material.dispose();edge=null;}
+  if(layerGroup){crystal.remove(layerGroup);disposeLayerGroup(layerGroup);layerGroup=null;}
+  // Render-only selection: the same versioned snapshot and solved ice outline.
+  // Switching between views MUST NOT advance or change the physics.
+  const layered=$('iceView').value==='five';
+  if(layered){
+    const result=buildUniformLayerGroup(THREE,s);
+    layerGroup=result.group;
+    crystal.add(layerGroup);
+    const maxRadius=Math.max(3.2,um(s.morph.equivalentBasalRadius)*1.5);
+    worldScale=2.5/maxRadius;
+    crystal.scale.setScalar(worldScale);
+    $('viewport').dataset.iceSlices=String(layerGroup.children.filter(x=>x.isMesh).length);
+    $('viewLabel').textContent=s.snapshotSchema.version===2?
+      '5 × 24.5% · MEAN-HEIGHT GUIDE '+num(um(result.plan.physicalThicknessM),2)+' µm':
+      '5 × 24.5% TRANSLUCENT SLICES · UNIFORM '+num(um(result.plan.physicalThicknessM),2)+' µm';
+    $('sliceStatus').textContent=s.snapshotSchema.version===2?
+      'PASS 8: LOCAL HEIGHT IN FIELD MAP · SHEETS ARE MEAN-HEIGHT PROXIES ONLY':
+      'PREVIEW ONLY · 5 OPTICAL HEIGHT SLICES · NO LOCAL THICKNESS SOLVER';
+    return;
+  }
+  $('viewport').dataset.iceSlices='0';
+  $('sliceStatus').textContent=s.snapshotSchema.version===2?
+    'SOLID MEAN-THICKNESS PROXY · SEE LOCAL HEIGHT IN FIELD MAP':
+    'SOLID LEGACY EXTRUSION · UNIFORM THICKNESS';
   const radii=s.morph.radius;
   const n=radii.length;
   const shape=new THREE.Shape();
@@ -264,7 +429,8 @@ function updateMesh(s) {
   const maxRadius=Math.max(3.2,um(s.morph.equivalentBasalRadius)*1.5);
   worldScale=2.5/maxRadius;
   crystal.scale.setScalar(worldScale);
-  $('viewLabel').textContent='EXTRUDED CONTOUR · '+num(depth,2)+' µm THICK';
+  $('viewLabel').textContent=(s.topology==='triangular'?'TRIANGULAR-LATTICE · ':'')+
+    '2.5-D EXTRUSION · '+num(depth,2)+' µm';
 }
 
 function fieldColor(t,ice=false) {
@@ -276,15 +442,106 @@ function fieldColor(t,ice=false) {
 function fieldValues(s,kind) {
   if(kind==='temperature')return {values:s.dT,unit:'mK',scale:1000};
   if(kind==='occupancy')return {values:s.phi,unit:'φ',scale:1};
+  if(kind==='thickness'){
+    if(s.snapshotSchema.version!==2)throw new Error('Local thickness was not solved in this replay frame');
+    const values=new Float32Array(s.hTop.length);
+    for(let k=0;k<values.length;k++)values[k]=Math.max(0,s.hTop[k]-s.hBottom[k]);
+    return {values,unit:'µm',scale:1e6};
+  }
+  if(kind==='potential')return {values:s.ePotential||new Float32Array(s.n*s.n),unit:'V',scale:1};
+  if(kind==='electric')return {values:s.eMagnitude||new Float32Array(s.n*s.n),unit:'MV/m',scale:1e-6};
   return {values:s.u,unit:'%',scale:100};
 }
+function hexRasterGeometry(s,can){
+  const R=(s.n-1)/2;
+  const units=Math.min((can.width-32)/(2*R+2),(can.height-32)/(Math.sqrt(3)*R+2));
+  return {unit:units,cx:can.width/2,cy:can.height/2,R};
+}
+/**
+ * Render the ACTUAL numerical fields as a high-resolution piecewise-linear
+ * scalar interpolation over equilateral triangles. This changes only the
+ * visualization, never the stored phase/flux or growth physics.
+ *
+ * The previous loop drew ~120k individual canvas polygon paths at 401²
+ * and produced jagged display cells. This is a bounded ~1024² pixel shader
+ * in plain Canvas ImageData with no per-pixel object allocations.
+ */
+function drawHexField(s,ctx,can,kind,values,scale,unit){
+  const resolution=Number($('fieldResolution').value);
+  if(![768,1024,1536].includes(resolution))throw new RangeError('Unsupported field pixel resolution');
+  if(can.width!==resolution||can.height!==resolution){
+    can.width=resolution;can.height=resolution;
+  }
+  const N=s.n,g=hexRasterGeometry(s,can),mask=s.mask,phi=s.phi;
+  let lo=kind==='occupancy'?0:Infinity,hi=kind==='occupancy'?1:-Infinity;
+  if(kind!=='occupancy'){
+    for(let k=0;k<N*N;k++){
+      if(!mask[k]||(['vapor','temperature'].includes(kind)&&s.ice[k]))continue;
+      lo=Math.min(lo,values[k]);hi=Math.max(hi,values[k]);
+    }
+  }
+  if(!Number.isFinite(lo)||!Number.isFinite(hi)){lo=0;hi=1;}
+  const den=Math.max(1e-10,hi-lo),image=ctx.createImageData(resolution,resolution);
+  const dest=image.data,cx=g.cx,cy=g.cy,R=g.R,unitPx=g.unit;
+  const paletteTable=new Uint8Array(256*3);
+  for(let l=0;l<256;l++){
+    const rgb=fieldColor(l/255);
+    const offset=3*l;paletteTable[offset]=rgb[0];paletteTable[offset+1]=rgb[1];paletteTable[offset+2]=rgb[2];
+  }
+  const inv=1/unitPx,root3=Math.sqrt(3),root3Inv2=2/root3;
+  for(let py=0;py<resolution;py++){
+    const rf=(cy-py-.5)*inv*root3Inv2;
+    const r0=Math.floor(rf),v=rf-r0,row=r0+R;
+    for(let px=0;px<resolution;px++){
+      const o=(py*resolution+px)*4;
+      // Same affine coordinates and triangulation as sampleHexLinear().
+      const qf=(px+.5-cx)*inv-rf/2,q0=Math.floor(qf),u=qf-q0;
+      const col=q0+R;
+      let k0,k1,k2,w0,w1,w2;
+      if(col<0||row<0||col+1>=N||row+1>=N){
+        dest[o]=7;dest[o+1]=26;dest[o+2]=40;dest[o+3]=255;continue;
+      }
+      const base=row*N+col;
+      if(u+v<=1){
+        k0=base;k1=base+1;k2=base+N;
+        w0=1-u-v;w1=u;w2=v;
+      }else{
+        k0=base+N+1;k1=base+N;k2=base+1;
+        w0=u+v-1;w1=1-u;w2=1-v;
+      }
+      if(!mask[k0]||!mask[k1]||!mask[k2]){
+        dest[o]=7;dest[o+1]=26;dest[o+2]=40;dest[o+3]=255;continue;
+      }
+      const p=w0*phi[k0]+w1*phi[k1]+w2*phi[k2];
+      if(kind!=='occupancy'&&['vapor','temperature'].includes(kind)&&p>.20){
+        dest[o]=201;dest[o+1]=238;dest[o+2]=249;dest[o+3]=255;continue;
+      }
+      const val=kind==='occupancy'?p:
+        w0*values[k0]+w1*values[k1]+w2*values[k2];
+      const z=3*Math.max(0,Math.min(255,Math.round((val-lo)/den*255)));
+      dest[o]=paletteTable[z];dest[o+1]=paletteTable[z+1];dest[o+2]=paletteTable[z+2];dest[o+3]=255;
+    }
+  }
+  ctx.putImageData(image,0,0);
+  $('fieldMin').textContent=num(lo*scale,3)+' '+unit;
+  $('fieldMax').textContent=num(hi*scale,3)+' '+unit;
+}
+
 function drawField(s) {
   const can=$('fieldCanvas'),ctx=can.getContext('2d'),kind=$('field').value;
   if(!ctx)return;
   const N=s.n,{values,scale,unit}=fieldValues(s,kind);
+  can.style.imageRendering=s.topology==='triangular'?'auto':'pixelated';
+  $('fieldFidelity').textContent=kind==='thickness'?
+      'PHYSICAL LOCAL HEIGHT (PASS 8) · DISPLAY INTERPOLATED · z SUPPLY OPEN':
+    s.topology==='triangular'
+      ?'PIECEWISE-LINEAR 2-D DISPLAY · '+$('fieldResolution').value+' px · SOLVER dx 0.75 µm':
+      'RAW CARTESIAN CELL RASTER · SOLVER dx 0.75 µm';
+  if(s.topology==='triangular'){drawHexField(s,ctx,can,kind,values,scale,unit);return;}
   const data=[];
   for(let k=0;k<N*N;k++){
-    if(kind==='occupancy')data.push(s.ice[k]?1:values[k]);else if(!s.ice[k])data.push(values[k]);
+    if(['occupancy','electric','potential'].includes(kind))data.push(kind==='occupancy'&&s.ice[k]?1:values[k]);
+    else if(!s.ice[k])data.push(values[k]);
   }
   let lo=kind==='occupancy'?0:Math.min(...data),hi=kind==='occupancy'?1:Math.max(...data);
   if(!Number.isFinite(lo)||!Number.isFinite(hi)){lo=0;hi=1;}
@@ -293,21 +550,33 @@ function drawField(s) {
   const image=ctx.createImageData(N,N);
   for(let k=0;k<N*N;k++){
     const fraction=kind==='occupancy'?(s.ice[k]?1:values[k]):values[k];
-    const rgb=fieldColor((fraction-lo)/den,kind!=='occupancy'&&s.ice[k]);
+    const rgb=fieldColor((fraction-lo)/den,['vapor','temperature'].includes(kind)&&s.ice[k]);
     const o=k*4;image.data[o]=rgb[0];image.data[o+1]=rgb[1];image.data[o+2]=rgb[2];image.data[o+3]=255;
   }
   ctx.putImageData(image,0,0);
-  $('fieldMin').textContent=num(lo*scale,kind==='temperature'?2:1)+' '+unit;
-  $('fieldMax').textContent=num(hi*scale,kind==='temperature'?2:1)+' '+unit;
+  const decimal=['electric','temperature'].includes(kind)?3:2;
+  $('fieldMin').textContent=num(lo*scale,decimal)+' '+unit;
+  $('fieldMax').textContent=num(hi*scale,decimal)+' '+unit;
 }
 function onFieldMove(evt) {
   const s=current();if(!s)return;
   const r=evt.currentTarget.getBoundingClientRect(),N=s.n;
-  const i=clamp(Math.floor((evt.clientX-r.left)/r.width*N),0,N-1);
-  const j=clamp(Math.floor((evt.clientY-r.top)/r.height*N),0,N-1);
-  const k=j*N+i;
-  const c=(N-1)/2;
-  $('fieldInspect').textContent='x '+num((i-c)*um(s.dx),1)+' µm · y '+num((j-c)*um(s.dx),1)+' µm · u '+num(s.u[k]*100,3)+' % · ΔT '+num(s.dT[k]*1000,2)+' mK · φ '+num(s.ice[k]?1:s.phi[k],2);
+  let i,j,k,x,y;
+  if(s.topology==='triangular'){
+    const can=evt.currentTarget,g=hexRasterGeometry(s,can);
+    const px=(evt.clientX-r.left)/r.width*can.width,py=(evt.clientY-r.top)/r.height*can.height;
+    x=(px-g.cx)/g.unit*s.dx;y=-(py-g.cy)/g.unit*s.dx;
+    k=hexCellAtXY({N:s.n,R:g.R,dx:s.dx,mask:s.mask},x,y);
+    if(k<0){$('fieldInspect').textContent='OUTSIDE HEXAGONAL TRANSPORT DOMAIN';return;}
+    i=k%N;j=Math.floor(k/N);
+  }else{
+    i=clamp(Math.floor((evt.clientX-r.left)/r.width*N),0,N-1);
+    j=clamp(Math.floor((evt.clientY-r.top)/r.height*N),0,N-1);
+    k=j*N+i;const c=(N-1)/2;
+    x=(i-c)*s.dx;y=(j-c)*s.dx;
+  }
+  $('fieldInspect').textContent='x '+num(um(x),1)+' µm · y '+num(um(y),1)+' µm · u '+num(s.u[k]*100,3)+' % · ΔT '+num(s.dT[k]*1000,2)+' mK · φ '+num(s.ice[k]?1:s.phi[k],2)+
+  (s.eEnabled?' · |E| '+num(s.eMagnitude[k]*1e-6,3)+' MV/m · V '+num(s.ePotential[k],3)+' V':'');
 }
 
 // Canvas plots are pixel-perfect and use the same stored physical samples.
@@ -373,7 +642,10 @@ function radialSeries(s){
     for(let k=0;k<points;k++){
       const r=maxR*k/(points-1),i=clamp(Math.round(center+r*Math.cos(theta)/s.dx),0,s.n-1);
       const j=clamp(Math.round(center+r*Math.sin(theta)/s.dx),0,s.n-1);
-      out.push([um(r),100*s.u[j*s.n+i]]);
+      const sampleIndex=s.topology==='triangular'?
+        hexCellAtXY({N:s.n,R:center,dx:s.dx,mask:s.mask},
+          r*Math.cos(theta),r*Math.sin(theta)):j*s.n+i;
+      if(sampleIndex>=0)out.push([um(r),100*s.u[sampleIndex]]);
     }
     radials.push({color:palette[arm],points:out,width:1.55});
   }
@@ -399,14 +671,36 @@ function download(name,type,data) {
   setTimeout(()=>URL.revokeObjectURL(url),2000);
 }
 function downloadCsv(){
-  const columns=['time_s','radius_um','mean_radius_um','half_thickness_um','deposited_mass_pg','latent_energy_J','max_dT_mK','m4_relative','m6_relative','m12_relative','mean_interface_sigma','mean_prism_alpha','alpha_basal','interface_cells','mass_rate_pg_s','basal_velocity_um_s','mean_curvature_per_um','mean_capillary_exponent'];
+  const columns=['time_s','radius_um','mean_radius_um','half_thickness_um','deposited_mass_pg','latent_energy_J','max_dT_mK','m4_relative','m6_relative','m12_relative','mean_interface_sigma','mean_prism_alpha','alpha_basal','interface_cells','mass_rate_pg_s','basal_velocity_um_s','mean_curvature_per_um','mean_capillary_exponent',
+    'max_electric_field_MV_m','flexoelectric_P_uC_m2','mean_dielectric_log_shift','poisson_residual_V','electric_coupled',
+    'domain_um','tip_radius_um','halo_cells','thickness_um','halfthickness_over_tipradius','domain_stop','water_saturation_ice_percent','habit',
+    'topology','domain_expansions','kinetic_phase_deg','surface_epsilon','seed_shape','seed_phase_deg',
+    'snapshot_schema_version','local_height_active','physical_ice_mass_pg','prism_in_pg','external_vertical_basal_in_pg',
+    'prism_mass_rate_pg_s','basal_mass_rate_pg_s','thickness_mean_um','thickness_max_um',
+    'ice_ledger_residual_fg','ice_ledger_relative_residual','vertical_vapor_transport_solved'];
   const rows=[columns.join(',')];
   for(const s of frames){
     const b=s.budget||{},m=s.morph;
     const values=[s.t,um(m.equivalentBasalRadius),um(m.meanRadius),um(m.halfThickness),pg(s.deposited),s.energy,(b.maxDeltaT||0)*1000,
       m.modes[4].relative,m.modes[6].relative,m.modes[12].relative,b.meanSigma,b.meanPrismAlpha,b.alphaBasal,b.interfaceCells,
       b.totalMassRate===undefined?'':pg(b.totalMassRate),b.vBasal===undefined?'':um(b.vBasal),
-      b.meanCurvature===undefined?'':b.meanCurvature*1e-6,b.meanCapillaryExponent];
+      b.meanCurvature===undefined?'':b.meanCurvature*1e-6,b.meanCapillaryExponent,
+      s.eDiagnostics?s.eDiagnostics.maxFieldVM*1e-6:'',s.eDiagnostics?s.eDiagnostics.maxPolarization*1e6:'',
+      b.meanElectricLogShift??0,s.eDiagnostics?.residualRmsV??'',s.eCoupled?1:0,
+      s.audit.domainUm,s.audit.tipRadiusUm,s.audit.haloCells,s.audit.thicknessUm,s.audit.plateRatio,
+      s.audit.stop?1:0,s.waterSaturationPercent,s.habit,s.topology,s.expansions,b.kineticPhaseDeg??'',b.surfaceEnergyEpsilon??'',
+      b.seedShape??'',b.seedRotationDeg??'',
+      s.snapshotSchema.version,s.snapshotSchema.version===2?1:0,
+      s.iceStructure.iceMassKg===undefined?'':pg(s.iceStructure.iceMassKg),
+      s.iceStructure.ledgerPrismKg===undefined?'':pg(s.iceStructure.ledgerPrismKg),
+      s.iceStructure.ledgerBasalKg===undefined?'':pg(s.iceStructure.ledgerBasalKg),
+      b.prismMassRate===undefined?'':pg(b.prismMassRate),
+      b.basalMassRate===undefined?'':pg(b.basalMassRate),
+      s.snapshotSchema.version===2?um(s.iceStructure.physicalTotalThicknessM):'',
+      s.snapshotSchema.version===2?um(s.iceStructure.maxLocalThicknessM):'',
+      s.iceStructure.ledgerResidualKg===undefined?'':s.iceStructure.ledgerResidualKg*1e15,
+      b.relativeMassResidual??'',
+      s.iceStructure.verticalVaporTransportSolved?1:0];
     rows.push(values.map(v=>v??'').join(','));
   }
   download('snowflake-observatory-'+new Date().toISOString().slice(0,10)+'.csv','text/csv;charset=utf-8',rows.join('\r\n')+'\r\n');
@@ -427,29 +721,105 @@ function showReplay(index){
   setStatus(replay?'REPLAYING STORED SOLVER STATE':playing?'SOLVER RUNNING':'SOLVER PAUSED');
   sync();
 }
+function describeSelectedHabit(){
+  const habit=GROWTH_HABITS[$('habit').value];
+  if(!habit)return;
+  $('habitNote').textContent=(habit.supported?'OBSERVED HABIT TARGET · ':'NOT SIMULATED · ')+
+    habit.expectation+' '+(habit.limitation||habit.calibration)+'. '+habit.evidence+'.';
+  $('preset').disabled=!habit.supported;
+  $('preset').title=habit.supported?'Apply exploratory scenario; no guaranteed morphology':habit.limitation;
+}
+function loadSelectedHabit(){
+  const key=$('habit').value,habit=GROWTH_HABITS[key];
+  if(!habit?.supported){
+    describeSelectedHabit();
+    setStatus('UNSUPPORTED HABIT · NEEDLE/COLUMN REQUIRES RESOLVED 3-D',true);
+    return;
+  }
+  const values={
+    temp:habit.temperatureC,sigma:habit.sigmaPercent,pressure:habit.pressureKPa,
+    anisotropy:habit.anisotropy6,prism:habit.prismSigma0,basalA:habit.basalA,
+    seed:habit.seedRadiusUm,gridSize:habit.gridN
+  };
+  for(const [id,value] of Object.entries(values))$(id).value=String(value);
+  $('sdak').checked=habit.sdak;$('capillarity').checked=habit.capillarity;
+  // Weather scenarios are neutral; electric forcing is a separate experiment.
+  $('electricEnabled').checked=false;$('electricCouple').checked=false;
+  $('eField').value='2';$('bendGradient').value='0';
+  $('kineticPhase').value=String(habit.kineticPhaseDeg??0);
+  $('surfaceEpsilon').value=String(habit.surfaceEnergyEpsilon??0);
+  $('seedShape').value='circle';$('seedPhase').value='0';
+  $('topology').value='triangular';topologyControls();
+  activeHabit=key;formatControls();reset(true);describeSelectedHabit();
+}
+function topologyControls(){
+  const hex=$('topology').value==='triangular';
+  // The Poisson module is currently discretized on the Cartesian grid.
+  // Do not pretend it solves on the triangular mesh.
+  for(const name of ['electricEnabled','electricCouple']){
+    if(hex)$(name).checked=false;
+    $(name).disabled=hex;
+  }
+  for(const name of ['kineticPhase','surfaceEpsilon','seedShape','seedPhase']){
+    $(name).disabled=!hex;
+  }
+  for(const opt of $('gridSize').options){
+    opt.disabled=!hex&&Number(opt.value)>161;
+  }
+  if(!hex&&Number($('gridSize').value)>161)$('gridSize').value='161';
+  if(!hex)$('localHeight').checked=false;
+  $('localHeight').disabled=!hex;
+  for(const opt of $('field').options){
+    if(['electric','potential'].includes(opt.value))opt.disabled=hex;
+    if(opt.value==='thickness')opt.disabled=!hex||!state?.localHeight;
+  }
+  if((hex&&['electric','potential'].includes($('field').value))||
+      (!$('localHeight').checked&&$('field').value==='thickness'))$('field').value='vapor';
+  $('topologyValue').textContent=hex?'6-neighbor triangular':'9-point Cartesian';
+  formatControls();
+}
 function setupEvents(){
   formatControls();
-  for(const [id] of labels)$(id).addEventListener('input',()=>{formatControls();setPending(true);});
-  for(const id of ['sdak','capillarity'])$(id).addEventListener('change',()=>setPending(true));
+  describeSelectedHabit();
+  topologyControls();
+  $('topology').addEventListener('change',()=>{
+    activeHabit='custom';topologyControls();setPending(true);
+  });
+  $('localHeight').addEventListener('change',()=>{
+    activeHabit='custom';
+    topologyControls();
+    setPending(true);
+  });
+  $('fieldResolution').addEventListener('change',()=>{
+    $('fieldResolutionValue').textContent=$('fieldResolution').value+' px';
+    if(current())drawField(current());
+  });
+  for(const [id] of labels)$(id).addEventListener('input',()=>{
+    activeHabit='custom';formatControls();setPending(true);
+  });
+  for(const id of ['sdak','capillarity','electricEnabled','electricCouple','epsIce',
+      'kineticPhase','surfaceEpsilon','seedShape','seedPhase'])$(id).addEventListener('change',()=>{
+    activeHabit='custom';formatControls();setPending(true);
+  });
   $('apply').addEventListener('click',()=>reset(true));
   $('reset').addEventListener('click',()=>reset(false));
   $('step').addEventListener('click',()=>{
     if(replay){replay=false;selectedIndex=frames.length-1;}
-    playing=false;$('play').textContent='▶ Play';advance();setStatus('SOLVER PAUSED');
+    playing=false;$('play').textContent='▶ Play';advance();
+    const audit=current()?.audit;
+    setStatus(audit?.stop?'MODEL DOMAIN STOP · '+audit.reason:
+      audit?.warning?'MODEL VALIDITY WARNING · '+audit.reason:'SOLVER PAUSED');
   });
   $('play').addEventListener('click',play);
-  $('preset').addEventListener('click',()=>{
-    $('temp').value=-15;$('sigma').value=18;$('anisotropy').value=.54;
-    $('prism').value=.0035;$('seed').value=1.5;$('sdak').checked=true;
-    $('capillarity').checked=true;formatControls();reset(true);
-    $('scenario').textContent='SDAK · DENDRITIC EXPLORATION';
-  });
+  $('habit').addEventListener('change',describeSelectedHabit);
+  $('preset').addEventListener('click',loadSelectedHabit);
   $('field').addEventListener('change',()=>{if(current())drawField(current());});
   $('fieldCanvas').addEventListener('pointermove',onFieldMove);
   $('fieldCanvas').addEventListener('pointerleave',()=>$('fieldInspect').textContent='HOVER FIELD TO INSPECT A CELL');
   $('rotate').addEventListener('change',()=>{if(controls)controls.autoRotate=$('rotate').checked;});
   $('viewTop').addEventListener('click',viewTop);
   $('viewIso').addEventListener('click',viewIso);
+  $('iceView').addEventListener('change',()=>{if(current())updateMesh(current());});
   $('csv').addEventListener('click',downloadCsv);
   $('png').addEventListener('click',downloadPng);
   $('speed').addEventListener('change',()=>accumulator=0);
@@ -484,6 +854,6 @@ function loop(now){
 setupEvents();
 try{
   initializeScene();
-  reset(true);
+  loadSelectedHabit();
 }catch(e){fail(e);}
 requestAnimationFrame(loop);

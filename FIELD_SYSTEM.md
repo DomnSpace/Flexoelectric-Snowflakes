@@ -158,9 +158,8 @@ The current neutral field system does not yet contain
 
 - resolved 3-D vapor/temperature PDEs,
 - airflow/advection,
-- electrostatic field `E = -grad(phi_E)`,
-- polarization/flexoelectric bound charge,
-- mechanical strain field,
+- solved elastic strain field (only externally prescribed gradients exist),
+- free-charge / ion transport and Maxwell stress,
 - anisotropic thermal/vapor transport tensors,
 - surface premelting or explicit quasi-liquid layer,
 - fully calibrated SDAK.
@@ -174,3 +173,7 @@ Those should be added as fields with their own conservation/equilibrium equation
 - `app/spatialfield.html` — canonical field visualization
 - `app/tests/growth25d.test.mjs`
 - `app/tests/fieldlines.test.mjs`
+
+## 14. Experimental electrostatic extension (subsequent branch)
+
+`app/solver/electric25d.js` now adds an **optional** discretized electrostatic equilibrium field: `div(εr grad V) = div P / ε0`, with ice/air dielectric contrast, imposed far-field potential and prescribed laboratory flexoelectric strain gradient `P = μ∇ε`. Its opt-in dielectric free-energy correction changes interface equilibrium concentration rather than visually multiplying velocity. This is a simplified 2.5-D experiment, **not** a fully coupled elastic/charge-transport crystal model. See `ELECTROSTATICS.md` for source references and falsification tests.
