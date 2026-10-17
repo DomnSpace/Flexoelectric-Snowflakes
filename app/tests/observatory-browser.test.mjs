@@ -18,7 +18,9 @@ try{
   assert.equal(await page.locator('#errorOverlay').isVisible(),false,
     '3D/solver error overlay must be hidden: '+await page.locator('#errorOverlay').innerText()+
     ' / console: '+errors.join(' | '));
-  assert.match(await page.locator('#status').innerText(),/SOLVER RUNNING/);
+  assert.match(await page.locator('#status').innerText(),
+    /SOLVER RUNNING|MODEL VALIDITY WARNING/,
+    'startup is running, but may already have advanced into a legitimate plate-validity warning');
   assert.equal(await page.locator('#viewport canvas').count(),1,'WebGL canvas mounted');
   assert.equal(await page.locator('#topology').inputValue(),'triangular',
     'triangular lattice is the startup default');
