@@ -82,6 +82,52 @@ try{
   assert.equal(await page.locator('#pending').isVisible(),false,'apply resets model');
   // The electric Poisson branch remains a separate Cartesian experiment;
   // switching to it must not silently enable electric effects on the hex grid.
+  // Pass 8: real local upper/lower ice fields and an explicit external
+  // vertical vapor source, independently switched on ONLY for hex.
+  assert.equal(await page.locator('#localHeight').isDisabled(),false);
+  await page.locator('#localHeight').check();
+  assert.equal(await page.locator('#pending').isVisible(),true);
+  await page.locator('#apply').click();
+  assert.match(await page.locator('#snapshotVersion').innerText(),/v2/);
+  assert.match(await page.locator('#snapshotRepresentation').innerText(),/LOCAL TOP\/BOTTOM/);
+  assert.equal(await page.locator('#field option[value="thickness"]').isDisabled(),false);
+  await page.locator('#play').click();
+  const heightBefore=parseFloat(await page.locator('#kTime').innerText());
+  await page.locator('#step').click();
+  assert.ok(parseFloat(await page.locator('#kTime').innerText())>heightBefore,
+    'local-height hex step advances physical time');
+  assert.ok(parseFloat(await page.locator('#bPrismFlux').innerText())>0,
+    'real lateral flux is admitted');
+  assert.ok(parseFloat(await page.locator('#bBasalFlux').innerText())>0,
+    'real basal flux arrives from the explicitly open z reservoir');
+  assert.match(await page.locator('#bMassResidual').innerText(),/OPEN SOURCE/);
+  assert.match(await page.locator('#bLocalHeight').innerText(),/µm/);
+  await page.locator('#field').selectOption('thickness');
+  assert.match(await page.locator('#fieldMax').innerText(),/µm/);
+  assert.match(await page.locator('#fieldFidelity').innerText(),/PHYSICAL LOCAL HEIGHT/);
+  await page.locator('#iceView').selectOption('five');
+  assert.equal(await page.locator('#viewport').getAttribute('data-ice-slices'),'5');
+  assert.match(await page.locator('#sliceStatus').innerText(),/MEAN-HEIGHT PROXIES ONLY/);
+  const beforeVisual={
+    mass:await page.locator('#kMass').innerText(),
+    time:await page.locator('#kTime').innerText()
+  };
+  await page.locator('#iceView').selectOption('solid');
+  await page.locator('#iceView').selectOption('five');
+  assert.deepEqual({
+    mass:await page.locator('#kMass').innerText(),
+    time:await page.locator('#kTime').innerText()
+  },beforeVisual,'Pass 8 optical view toggle is still render-only');
+  const csvP8=page.waitForEvent('download');
+  await page.locator('#csv').click();
+  const csvP8Download=await csvP8;
+  assert.match(csvP8Download.suggestedFilename(),/\.csv$/);
+  await page.locator('#iceView').selectOption('solid');
+  await page.locator('#field').selectOption('vapor');
+  await page.locator('#localHeight').uncheck();
+  await page.locator('#apply').click();
+  assert.match(await page.locator('#snapshotVersion').innerText(),/v1/);
+  assert.equal(await page.locator('#field option[value="thickness"]').isDisabled(),true);
   await page.locator('#topology').selectOption('square');
   await page.locator('#apply').click();
   // Exercise the optional electrostatic experiment with a physically
