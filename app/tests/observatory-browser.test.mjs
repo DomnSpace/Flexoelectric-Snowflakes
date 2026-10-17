@@ -106,7 +106,7 @@ try{
     'real basal flux arrives from the explicitly open z reservoir');
   assert.match(await page.locator('#bMassResidual').innerText(),/OPEN SOURCE/);
   assert.match(await page.locator('#bLocalHeight').innerText(),/µm/);
-  assert.equal(await page.locator('#iceView option[value="localSolid"]').isDisabled(),false);
+  assert.equal(await page.locator('#iceView option[value="localSolid"]').evaluate(el=>el.disabled),false);
   assert.equal(await page.locator('#iceView').inputValue(),'localSolid',
     'v2 height solver starts in true local top/bottom surface mode');
   assert.equal(await page.locator('#viewport').getAttribute('data-height-source'),
@@ -162,8 +162,8 @@ try{
   await page.locator('#localHeight').uncheck();
   await page.locator('#apply').click();
   assert.match(await page.locator('#snapshotVersion').innerText(),/v1/);
-  assert.equal(await page.locator('#iceView option[value="localSolid"]').isDisabled(),true);
-  assert.equal(await page.locator('#iceView option[value="localFive"]').isDisabled(),true);
+  assert.equal(await page.locator('#iceView option[value="localSolid"]').evaluate(el=>el.disabled),true);
+  assert.equal(await page.locator('#iceView option[value="localFive"]').evaluate(el=>el.disabled),true);
   assert.notEqual(await page.locator('#iceView').inputValue(),'localSolid');
   assert.equal(await page.locator('#field option[value="thickness"]').isDisabled(),true);
   await page.locator('#topology').selectOption('square');
