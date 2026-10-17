@@ -29,12 +29,13 @@
   <main class="workspace">
     <div class="visual-column">
       <section class="panel crystal-panel" aria-label="3D snowflake">
-        <div class="panel-top"><div><span class="index">01 / 3-D CRYSTAL</span><h2>Ice architecture <small>resolved outline / illuminated extrusion</small></h2></div><span class="chip" id="cameraLabel">ORBIT ENABLED</span></div>
+        <div class="panel-top"><div><span class="index">01 / 3-D CRYSTAL</span><h2>Ice architecture <small>local top / bottom / rim · measured height</small></h2></div><span class="chip" id="cameraLabel">ORBIT ENABLED</span></div>
         <div id="viewport" class="viewport">
           <div class="viewport-caption top-left">ICE Ih <span class="line"></span> BASAL PLANE</div>
           <div class="viewport-caption top-right"><span id="sizeLabel">— µm DOMAIN</span><span id="viewLabel">PRISM GEOMETRY</span></div>
           <div class="viewport-caption bottom-left">DRAG ROTATE <span>·</span> WHEEL ZOOM <span>·</span> DOUBLE-CLICK RESET VIEW</div>
           <div class="viewport-caption layer-caption" id="sliceStatus">SOLID LEGACY EXTRUSION · UNIFORM THICKNESS</div>
+           <div class="viewport-caption geometry-caption" id="heightGeometry">LEGACY CONTOUR PROXY</div>
            <div class="axis-note" id="axisNote">X / Y · µm</div>
           <div id="errorOverlay" class="error-overlay" hidden></div>
         </div>
@@ -50,7 +51,9 @@
             </select></label>
             <button id="preset" type="button" title="Loads a literature-inspired scenario and explicitly uncalibrated kinetic parameters">✳ Load scenario</button>
           <label class="speed">SPEED <select id="speed"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select></label>
-          <label class="speed layer-picker">ICE VIEW <select id="iceView" title="Toggle solid geometry / five optical layers without changing physical growth"><option value="solid" selected>Solid · legacy slab</option><option value="five">5 translucent height slices · preview</option></select></label>
+          <label class="speed layer-picker">ICE VIEW <select id="iceView" title="Toggle solid geometry / five optical layers without changing physical growth"><option value="solid" selected>Solid · legacy slab</option><option value="five">5 translucent height slices · uniform guide</option>
+             <option value="localSolid" disabled>Physical local top / bottom / rim · Pass 9</option>
+             <option value="localFive" disabled>5 actual local iso-height sections · Pass 9</option></select></label>
            <span class="grow"></span><button id="viewTop" title="Look straight down" type="button">TOP</button><button id="viewIso" title="Reset perspective" type="button">ISO</button>
         </div>
       </section>
@@ -81,7 +84,7 @@
             <div><dt>Mean dielectric ln(c_eq ratio)</dt><dd id="bElectricShift">—</dd></div>
             <div><dt>Poisson residual RMS</dt><dd id="bEResidual">—</dd></div>
           </dl>
-          <div class="notice" id="physicsDisclaimer">The baseline solid and five-sheet preview use the same basal-plane outline and uniform thickness. Pass 8 opt-in computes <strong>locally varying top/bottom heights</strong> and a separate basal mass source, but the 3-D geometry still shows a <strong>mean-height proxy</strong> until Pass 9. Basal vapor arrives from an explicit unresolved external z reservoir, not a full 3-D transport solution; mass-ledger closure does not imply conservation of a solved 3-D vapor field.</div>
+          <div class="notice" id="physicsDisclaimer">With Pass 8 local height enabled, Pass 9 reconstructs <strong>measured upper and lower surfaces, their rim, and five iso-height cross sections</strong> on the same triangular model grid. All features come from hTop, hBottom and φ; no artificial ridge accretion is added. Geometry is piecewise-linear at finite resolution, so its rendered volume is an approximation, <strong>not equal by definition</strong> to the solver's finite-volume ice ledger. Basal vapor comes from the separately recorded unresolved external z reservoir; no 3-D vapor PDE is solved.</div>
         </section>
       </div>
     </div>
@@ -108,7 +111,7 @@
         <div class="domain-report" id="domainReport" role="status" aria-live="polite"><b id="domainStatus">ASSESSING DOMAIN</b><span id="domainDetails">—</span></div>
         <div class="section-title">03 — ICE THICKNESS / BUDGET (PASS 8)</div>
         <div class="toggles"><label><input type="checkbox" id="localHeight"> Resolve local upper/lower ice heights (hex solver only; experimental)</label></div>
-        <div class="notice">New top/bottom arrays evolve from actual admitted prism and basal mass. Basal vapor source = <strong>open external vertical reservoir</strong>, not resolved 3-D diffusion. The physical thickness field appears under Spatial Fields; five translucent surfaces remain a mean-height optical guide until Pass 9.</div>
+        <div class="notice">New top/bottom arrays evolve from actual admitted prism and basal mass. Basal vapor source = <strong>open external vertical reservoir</strong>, not resolved 3-D diffusion. The physical thickness field appears under Spatial Fields; physical top/bottom meshes and five genuinely height-dependent cross sections are now available in ICE VIEW. Step bunching / macrostep ridge growth remains a separate physics study.</div>
         <div class="section-title">04 — FACET KINETICS</div>
         <label class="parameter" for="anisotropy"><span>Sixfold kinetic anisotropy <b id="anisotropyValue">0.50</b></span><input type="range" id="anisotropy" min="0" max=".70" step=".02" value=".50"><small>Factor: 1 + a cos(6(θ−φ)); θ = local outward interface normal, NOT radial arm angle.</small></label>
         <label class="parameter" for="kineticPhase"><span>Crystal / kinetic phase <b id="kineticPhaseValue">30°</b></span><select id="kineticPhase"><option value="0">0° · original orientation</option><option value="15">15° · intermediate control</option><option value="30" selected>30° · stellar candidate / swapped extrema</option></select><small>Controlled orientation test; 30° does not automatically stabilize dendrite spines.</small></label>

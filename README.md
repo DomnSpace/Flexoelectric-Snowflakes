@@ -69,6 +69,10 @@ A backward-Euler implicit solver replaces Step 2's nanosecond-limited explicit t
 
 **No new vertical ice growth, local solved thickness or vapor competition is claimed by Step 1.** The five transparent layers remain explicitly labeled a uniform-slab preview. Model B's conservative gas/ice face-flux interface is the next implementation gate; the original solver and current GitHub Pages remain intact.
 
+## Pass 9 — Real local surface reconstruction and ice ridge research
+
+[PASS9_HEIGHT_AND_RIDGE_RESEARCH.md](PASS9_HEIGHT_AND_RIDGE_RESEARCH.md) reviews observed snowflake **macrosteps, step bunching, and ridge formation**, explicitly rejecting ad hoc van der Waals alignment/rotation as a manufactured ridge source. Pass 9 reconstructs the live opt-in Pass 8 local top/bottom height surface and ice rim on the physical triangular grid and clips **five actual z cross-sections**. Choose **ICE VIEW → Physical local top / bottom / rim** or **5 actual local iso-height sections** after enabling **Resolve local upper/lower ice heights**. The old uniform views remain. Surface details only appear if the solver produced them: no ridge deposition or artificial branches are added. Render LOD on 300 µm domains is explicitly distinguished from the 0.75 µm physical lattice and does not change mass, time, vapor or heat calculations.
+
 ## Pass 8 — Local ice thickness and explicit prism/basal ice-mass ledger
 
 [PASS8_LOCAL_HEIGHT.md](PASS8_LOCAL_HEIGHT.md) documents the **opt-in** locally varying ice `hTop`/`hBottom` model on the triangular lattice. It computes actual local mass from the phase fraction and thickness, adds both prism and basal deposits to latent heat, tracks distinct external planar and unresolved z-direction vapor supplies, and records an ice-side mass ledger residual. **This is not a fully conservative 3-D vapor-ice solution**: the vertical reservoir has no resolved concentration/thermal PDE. In the Observatory, enable **Resolve local upper/lower ice heights**, apply the solver, then choose **Spatial Fields → Local ice thickness h**. Five optical sheets remain a *mean-thickness visual proxy* until Pass 9.
