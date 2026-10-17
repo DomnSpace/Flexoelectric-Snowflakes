@@ -9,6 +9,8 @@ import {saturationVaporPressureWaterMK, saturationVaporPressureIceMK} from './so
 import {makeHexGrowthState,resolvedHexGrowthStep,hexGrowthMorphology,
   auditHexDomain,enlargeHexDomain,hexCellAtXY} from './solver/hex25d.js';
 import {versionIceSnapshot,verifyIceSnapshot} from './solver/ice-snapshot-v1.js';
+import {versionLocalIceSnapshot,verifyLocalIceSnapshot} from './solver/ice-snapshot-v2.js';
+import {iceIhProperties} from './solver/ice-ih-eos.js';
 import {buildUniformLayerGroup,disposeLayerGroup,FIVE_LAYER_COUNT} from './render/uniform-five-layers.js';
 
 /*
@@ -66,6 +68,7 @@ function config() {
     sigmaInf: v('sigma')/100, pressurePa: v('pressure')*1000,
     seedRadius: v('seed')*1e-6, basalHalfThickness: 1.5e-6,
     seedShape:$('seedShape').value,seedRotationDeg:v('seedPhase'),
+    localHeight:$('localHeight').checked,
     kinetics: {
       prism: {mode:'nucleation',A:1,sigma0:v('prism')},
       basal: {...DEFAULT_ICE_KINETICS.basal,A:v('basalA')},
@@ -110,7 +113,7 @@ function snap() {
   // 720 phase-derived radial samples resolve contour angles without making
   // the 0.75 µm numerical solver falsely appear atomically resolved.
   const m=isHex()?hexGrowthMorphology(state,720):growthMorphology(state,180);
-  return versionIceSnapshot({
+  const sourceFrame={
     t:state.t, n:state.N, dx:state.dx, Tinf:state.Tinf,
     topology:state.topology||'square',mask:isHex()?new Uint8Array(state.mask):null,
     expansions:state.domainExpansions||0,
@@ -130,7 +133,11 @@ function snap() {
     audit:auditState(),habit:activeHabit,
     waterSaturationPercent:cloudSaturationSigma(state.Tinf-273.15)*100,
     deposited:state.totalDepositedMass, energy:state.totalLatentHeat
-  });
+  };
+  return state.localHeight?
+    versionLocalIceSnapshot(sourceFrame,state,
+      state.lastBudget?.rhoIce||iceIhProperties(state.Tinf,Math.min(state.pressurePa,210e6)).rho):
+    versionIceSnapshot(sourceFrame);
 }
 function current() {return frames[clamp(selectedIndex,0,frames.length-1)];}
 function capture() {
@@ -150,10 +157,17 @@ function reset(start=true) {
         throw new Error('Hexagonal experimental mesh does not support the electric Poisson model yet. Switch to Cartesian.');
       state=makeHexGrowthState(next);
     }else{
+      if(next.localHeight)throw new Error('Local height is currently hexagonal-only; disable it for the Cartesian electric solver.');
       if(next.N>161)throw new Error('Cartesian A/B solver is limited to 120 µm; choose triangular for 300 µm.');
       state=makeGrowth25DState(next);
     }
     frames=[];replay=false;playing=start;accumulator=0;
+    // Snapshot schemas are monotonic across each solver run. The selected
+    // physical model changes only via Apply/Restart, not via the view switch.
+    for(const opt of $('field').options){
+      if(opt.value==='thickness')opt.disabled=!state.localHeight;
+    }
+    if(!state.localHeight&&$('field').value==='thickness')$('field').value='vapor';
     $('errorOverlay').hidden=true;
     setPending(false);
     capture();sync();setStatus(start?'SOLVER RUNNING':'SOLVER PAUSED');
@@ -219,9 +233,11 @@ function play() {
 }
 function sync() {
   const s=current();if(!s)return;
-  verifyIceSnapshot(s);
+  if(s.snapshotSchema.version===2)verifyLocalIceSnapshot(s);
+  else verifyIceSnapshot(s);
   $('snapshotVersion').textContent='v'+s.snapshotSchema.version+' · '+s.snapshotSchema.topology;
-  $('snapshotRepresentation').textContent='UNIFORM SLAB · NO LOCAL HEIGHT';
+  $('snapshotRepresentation').textContent=s.snapshotSchema.version===2?
+    'LOCAL TOP/BOTTOM · OPEN Z RESERVOIR':'UNIFORM SLAB · NO LOCAL HEIGHT';
   $('kTime').innerHTML=num(s.t,1)+' <small>s</small>';
   $('kRadius').innerHTML=num(um(s.morph.equivalentBasalRadius),2)+' <small>µm</small>';
   $('kMass').innerHTML=num(pg(s.deposited),4)+' <small>pg</small>';
@@ -267,6 +283,13 @@ function updateBudget(s) {
     bPhase:s.topology==='triangular'?num(b?.kineticPhaseDeg??Number($('kineticPhase').value),0)+'°':'CARTESIAN',
     bStiffness:s.topology==='triangular'?num(b?.surfaceEnergyEpsilon??Number($('surfaceEpsilon').value),3):'CARTESIAN',
     bFlux:b?num(pg(b.totalMassRate),5)+' pg/s':'—',
+    bPrismFlux:s.snapshotSchema.version===2?num(pg(b?.prismMassRate||0),5)+' pg/s':'LEGACY PRISM ONLY',
+    bBasalFlux:s.snapshotSchema.version===2?num(pg(b?.basalMassRate||0),5)+' pg/s':'UNTRACKED',
+    bLocalHeight:s.snapshotSchema.version===2?
+      num(um(s.iceStructure.physicalTotalThicknessM),3)+' / '+
+      num(um(s.iceStructure.maxLocalThicknessM),3)+' µm':'UNIFORM LEGACY',
+    bMassResidual:s.snapshotSchema.version===2?
+      num(s.iceStructure.ledgerResidualKg*1e15,7)+' fg · OPEN SOURCE':'NO LEDGER',
     bEField:s.eEnabled?num((s.eDiagnostics?.maxFieldVM||0)*1e-6,4)+' MV/m':'OFF',
     bPolar:s.eEnabled?num((s.eDiagnostics?.maxPolarization||0)*1e6,4)+' µC/m²':'OFF',
     bElectricShift:b?num((b.meanElectricLogShift||0)*1e6,5)+' ppm':'—',
@@ -361,12 +384,18 @@ function updateMesh(s) {
     worldScale=2.5/maxRadius;
     crystal.scale.setScalar(worldScale);
     $('viewport').dataset.iceSlices=String(layerGroup.children.filter(x=>x.isMesh).length);
-    $('viewLabel').textContent='5 × 24.5% TRANSLUCENT SLICES · UNIFORM '+num(um(result.plan.physicalThicknessM),2)+' µm';
-    $('sliceStatus').textContent='PREVIEW ONLY · 5 OPTICAL HEIGHT SLICES · NO LOCAL THICKNESS SOLVER';
+    $('viewLabel').textContent=s.snapshotSchema.version===2?
+      '5 × 24.5% · MEAN-HEIGHT GUIDE '+num(um(result.plan.physicalThicknessM),2)+' µm':
+      '5 × 24.5% TRANSLUCENT SLICES · UNIFORM '+num(um(result.plan.physicalThicknessM),2)+' µm';
+    $('sliceStatus').textContent=s.snapshotSchema.version===2?
+      'PASS 8: LOCAL HEIGHT IN FIELD MAP · SHEETS ARE MEAN-HEIGHT PROXIES ONLY':
+      'PREVIEW ONLY · 5 OPTICAL HEIGHT SLICES · NO LOCAL THICKNESS SOLVER';
     return;
   }
   $('viewport').dataset.iceSlices='0';
-  $('sliceStatus').textContent='SOLID LEGACY EXTRUSION · UNIFORM THICKNESS';
+  $('sliceStatus').textContent=s.snapshotSchema.version===2?
+    'SOLID MEAN-THICKNESS PROXY · SEE LOCAL HEIGHT IN FIELD MAP':
+    'SOLID LEGACY EXTRUSION · UNIFORM THICKNESS';
   const radii=s.morph.radius;
   const n=radii.length;
   const shape=new THREE.Shape();
@@ -413,6 +442,12 @@ function fieldColor(t,ice=false) {
 function fieldValues(s,kind) {
   if(kind==='temperature')return {values:s.dT,unit:'mK',scale:1000};
   if(kind==='occupancy')return {values:s.phi,unit:'φ',scale:1};
+  if(kind==='thickness'){
+    if(s.snapshotSchema.version!==2)throw new Error('Local thickness was not solved in this replay frame');
+    const values=new Float32Array(s.hTop.length);
+    for(let k=0;k<values.length;k++)values[k]=Math.max(0,s.hTop[k]-s.hBottom[k]);
+    return {values,unit:'µm',scale:1e6};
+  }
   if(kind==='potential')return {values:s.ePotential||new Float32Array(s.n*s.n),unit:'V',scale:1};
   if(kind==='electric')return {values:s.eMagnitude||new Float32Array(s.n*s.n),unit:'MV/m',scale:1e-6};
   return {values:s.u,unit:'%',scale:100};
@@ -497,8 +532,10 @@ function drawField(s) {
   if(!ctx)return;
   const N=s.n,{values,scale,unit}=fieldValues(s,kind);
   can.style.imageRendering=s.topology==='triangular'?'auto':'pixelated';
-  $('fieldFidelity').textContent=s.topology==='triangular'
-    ?'PIECEWISE-LINEAR 2-D DISPLAY · '+$('fieldResolution').value+' px · SOLVER dx 0.75 µm':
+  $('fieldFidelity').textContent=kind==='thickness'?
+      'PHYSICAL LOCAL HEIGHT (PASS 8) · DISPLAY INTERPOLATED · z SUPPLY OPEN':
+    s.topology==='triangular'
+      ?'PIECEWISE-LINEAR 2-D DISPLAY · '+$('fieldResolution').value+' px · SOLVER dx 0.75 µm':
       'RAW CARTESIAN CELL RASTER · SOLVER dx 0.75 µm';
   if(s.topology==='triangular'){drawHexField(s,ctx,can,kind,values,scale,unit);return;}
   const data=[];
@@ -716,10 +753,14 @@ function topologyControls(){
     opt.disabled=!hex&&Number(opt.value)>161;
   }
   if(!hex&&Number($('gridSize').value)>161)$('gridSize').value='161';
+  if(!hex)$('localHeight').checked=false;
+  $('localHeight').disabled=!hex;
   for(const opt of $('field').options){
     if(['electric','potential'].includes(opt.value))opt.disabled=hex;
+    if(opt.value==='thickness')opt.disabled=!hex||!$('localHeight').checked;
   }
-  if(hex&&['electric','potential'].includes($('field').value))$('field').value='vapor';
+  if((hex&&['electric','potential'].includes($('field').value))||
+      (!$('localHeight').checked&&$('field').value==='thickness'))$('field').value='vapor';
   $('topologyValue').textContent=hex?'6-neighbor triangular':'9-point Cartesian';
   formatControls();
 }
@@ -729,6 +770,11 @@ function setupEvents(){
   topologyControls();
   $('topology').addEventListener('change',()=>{
     activeHabit='custom';topologyControls();setPending(true);
+  });
+  $('localHeight').addEventListener('change',()=>{
+    activeHabit='custom';
+    topologyControls();
+    setPending(true);
   });
   $('fieldResolution').addEventListener('change',()=>{
     $('fieldResolutionValue').textContent=$('fieldResolution').value+' px';
