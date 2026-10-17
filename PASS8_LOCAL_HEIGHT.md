@@ -81,6 +81,12 @@ The Pass 8 suite must verify: initialized seed mass; prism mass capacity and act
 
 The Chromium test additionally verifies opt-in v2 behavior, new local thickness spatial field, available CSV channels, legacy v1 return and the original electric solver as an independent control.
 
+## Relationship to the existing independent Model B five-slab pilot
+
+The repository already contains a **separate**, finite-volume five-slab gas/ice experiment in `app/solver/layered-gas-fv.js`, `layered-vapor-implicit.js`, `layered-ice-front.js`, and `layered-thermal.js`. It has its own conservation/heat tests and is **not interchangeable with** the existing hex25d solver state, especially not at 401²/300 µm. Pass 8 deliberately does **not** pretend those five independently evolving ice slabs have been integrated into the Observatory's current 2-D diffusion PDE.
+
+The opt-in local-height fields are a fast **reduced-order parallel experiment**, with the explicit external basal reservoir above. Full closed gas/ice conservation has been studied in the separate pilot, but **is not implemented in the live local-height mode**. Future coupling requires transferring boundary flux from the FV transport slabs into these per-cell top/bottom heights without double counting, plus solver convergence/performance tests.
+
 ## Still missing (Pass 9 and beyond)
 
 - Extract actual multiple z-contours (including holes) from spatial `topHeight`/`bottomHeight` + `phi`, using marching triangles, and illuminate real top/bottom gradients in five translucent physical slices. No photo-real height structures before that.
