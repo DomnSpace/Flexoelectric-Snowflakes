@@ -15,6 +15,7 @@ const tests = [
   './anisotropy-phase.test.mjs',
   './pass7-snapshot-layers.test.mjs',
   './pass8-thickness-budget.test.mjs',
+  './pass9-actual-height.test.mjs',
   './five-layer-baseline.test.mjs',
   './layered-gas-fv.test.mjs',
   './layered-implicit.test.mjs',
