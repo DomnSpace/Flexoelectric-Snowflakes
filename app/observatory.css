@@ -21,3 +21,11 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .layer-picker select{max-width:260px;letter-spacing:0;font-size:11px}
 .layer-caption{bottom:43px;left:25px;max-width:70%;color:#97d3e9;letter-spacing:.09em;text-shadow:0 1px 4px #061923}
 @media(max-width:700px){.layer-picker{width:100%;justify-content:space-between}.layer-picker select{flex:1;max-width:none}.layer-caption{bottom:49px;left:15px;max-width:85%;font-size:8px}}
+
+/* Pass 9: honest mesh provenance, drawn separately from the slice description. */
+.geometry-caption{bottom:62px;left:25px;color:#79bcd9;
+  font-size:9px;letter-spacing:.07em;max-width:78%;pointer-events:none}
+@media(max-width:700px){
+  .geometry-caption{bottom:72px;left:15px;font-size:8px;max-width:94%}
+  .layer-picker select{min-width:0}
+}
