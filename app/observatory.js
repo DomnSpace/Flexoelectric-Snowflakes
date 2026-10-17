@@ -771,7 +771,7 @@ function topologyControls(){
   $('localHeight').disabled=!hex;
   for(const opt of $('field').options){
     if(['electric','potential'].includes(opt.value))opt.disabled=hex;
-    if(opt.value==='thickness')opt.disabled=!hex||!$('localHeight').checked;
+    if(opt.value==='thickness')opt.disabled=!hex||!state?.localHeight;
   }
   if((hex&&['electric','potential'].includes($('field').value))||
       (!$('localHeight').checked&&$('field').value==='thickness'))$('field').value='vapor';
