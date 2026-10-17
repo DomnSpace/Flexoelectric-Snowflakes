@@ -12,6 +12,7 @@ import {versionIceSnapshot,verifyIceSnapshot} from './solver/ice-snapshot-v1.js'
 import {versionLocalIceSnapshot,verifyLocalIceSnapshot} from './solver/ice-snapshot-v2.js';
 import {iceIhProperties} from './solver/ice-ih-eos.js';
 import {buildUniformLayerGroup,disposeLayerGroup,FIVE_LAYER_COUNT} from './render/uniform-five-layers.js';
+import {buildActualIceMeshes} from './render/actual-height-mesh.js';
 
 /*
  * Snowflake Observatory
@@ -162,6 +163,12 @@ function reset(start=true) {
       state=makeGrowth25DState(next);
     }
     frames=[];replay=false;playing=start;accumulator=0;
+    const localViewOptions=['localSolid','localFive'];
+    for(const opt of $('iceView').options)
+      if(localViewOptions.includes(opt.value))opt.disabled=!state.localHeight;
+    if(state.localHeight&&$('iceView').value==='solid')$('iceView').value='localSolid';
+    if(!state.localHeight&&localViewOptions.includes($('iceView').value))
+      $('iceView').value='solid';
     // Snapshot schemas are monotonic across each solver run. The selected
     // physical model changes only via Apply/Restart, not via the view switch.
     for(const opt of $('field').options){
@@ -373,9 +380,35 @@ function updateMesh(s) {
   if(mesh){crystal.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();mesh=null;}
   if(edge){crystal.remove(edge);edge.geometry.dispose();edge.material.dispose();edge=null;}
   if(layerGroup){crystal.remove(layerGroup);disposeLayerGroup(layerGroup);layerGroup=null;}
-  // Render-only selection: the same versioned snapshot and solved ice outline.
-  // Switching between views MUST NOT advance or change the physics.
-  const layered=$('iceView').value==='five';
+  // Render-only: all actual heights are read from copied v2 snapshots.
+  // This must never change physical ice/vapor arrays or advance time.
+  const mode=$('iceView').value;
+  $('viewport').dataset.heightSource='legacy-uniform';
+  $('viewport').dataset.heightMeshTriangles='0';
+  if((mode==='localSolid'||mode==='localFive')&&s.snapshotSchema.version===2){
+    const slices=mode==='localFive';
+    const result=buildActualIceMeshes(THREE,s,{slices});
+    layerGroup=result.group;crystal.add(layerGroup);
+    const maxRadius=Math.max(3.2,um(s.morph.equivalentBasalRadius)*1.5);
+    worldScale=2.5/maxRadius;crystal.scale.setScalar(worldScale);
+    $('viewport').dataset.heightSource='snapshot-v2-physical-top-bottom';
+    $('viewport').dataset.heightMeshLOD=String(result.plan.stride);
+    $('viewport').dataset.iceSlices=slices?'5':'0';
+    const triangles=slices?
+      result.plan.layers.reduce((sum,l)=>sum+l.triangleCount,0):
+      result.plan.occupiedTriangles;
+    $('viewport').dataset.heightMeshTriangles=String(triangles);
+    $('viewLabel').textContent=slices?
+      '5 TRUE ISO-z SURFACES · '+num(um(s.iceStructure.maxLocalThicknessM),2)+' µm MAX':
+      'LOCAL TOP / BOTTOM / PRISM RIM · '+num(um(s.iceStructure.maxLocalThicknessM),2)+' µm MAX';
+    $('sliceStatus').textContent='PHYSICAL v2 HEIGHT FIELD · FINITE TRIANGULAR MESH · '+
+      'DISPLAY LOD '+result.plan.stride+' · NO RIDGE ACCRETION LAW';
+    $('heightGeometry').textContent=(slices?'FIVE HEIGHT CROSS-SECTIONS':'LOCAL TOP/BOTTOM & RIM')+
+      ' · '+triangles+' DISPLAY TRIANGLES · STRIDE '+result.plan.stride;
+    return;
+  }
+  $('heightGeometry').textContent='LEGACY CONTOUR PROXY · NOT LOCAL HEIGHT GEOMETRY';
+  const layered=mode==='five';
   if(layered){
     const result=buildUniformLayerGroup(THREE,s);
     layerGroup=result.group;
@@ -819,7 +852,9 @@ function setupEvents(){
   $('rotate').addEventListener('change',()=>{if(controls)controls.autoRotate=$('rotate').checked;});
   $('viewTop').addEventListener('click',viewTop);
   $('viewIso').addEventListener('click',viewIso);
-  $('iceView').addEventListener('change',()=>{if(current())updateMesh(current());});
+  $('iceView').addEventListener('change',()=>{
+    if(current())updateMesh(current());
+  });
   $('csv').addEventListener('click',downloadCsv);
   $('png').addEventListener('click',downloadPng);
   $('speed').addEventListener('change',()=>accumulator=0);
