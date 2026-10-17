@@ -89,6 +89,8 @@ try{
   assert.equal(await page.locator('#localHeight').isDisabled(),false);
   await page.locator('#localHeight').check();
   assert.equal(await page.locator('#pending').isVisible(),true);
+  assert.equal(await page.locator('#field option[value="thickness"]').isDisabled(),true,
+    'a pending checkbox cannot reveal fields before the v2 solver is actually applied');
   await page.locator('#apply').click();
   assert.match(await page.locator('#snapshotVersion').innerText(),/v2/);
   assert.match(await page.locator('#snapshotRepresentation').innerText(),/LOCAL TOP\/BOTTOM/);
