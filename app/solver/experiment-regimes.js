@@ -182,6 +182,11 @@ export function applyGrowthEnvironment(state,run,time){
     throw new Error('No versioned environment history');
   if(state.topology!=='triangular')throw new Error('Growth history requires triangular solver');
   const s=sampleGrowthHistory(run.stages,time);
+  if(run.stageIndex!==s.index){
+    run.transitions.push({time,stageIndex:s.index,label:s.label,
+      temperatureC:s.temperatureC,sigmaPercent:s.sigmaPercent});
+    run.stageIndex=s.index;
+  }
   if(Math.abs(s.temperatureC-run.lastTemperatureC)<1e-10&&
     Math.abs(s.sigmaPercent-run.lastSigmaPercent)<1e-10){
     run.stageIndex=s.index;return {changed:false,...s};
@@ -211,11 +216,6 @@ export function applyGrowthEnvironment(state,run,time){
   // Its subsequent heat relaxation uses the newly imposed Tinf.
   run.lastTemperatureC=s.temperatureC;
   run.lastSigmaPercent=s.sigmaPercent;
-  if(run.stageIndex!==s.index){
-    run.transitions.push({time,stageIndex:s.index,label:s.label,
-      temperatureC:s.temperatureC,sigmaPercent:s.sigmaPercent});
-  }
-  run.stageIndex=s.index;
   return {changed:true,...s};
 }
 export function cloneExperimentState(run){
