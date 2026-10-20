@@ -168,6 +168,15 @@ export function makeExperimentRun(presetId='dendrite'){
  * prescribed vapor concentration. Such flux at the boundary is an external
  * source/sink and must NOT be presented as a closed gas mass account.
  */
+export function makeCustomExperimentRun(temperatureC,sigmaPercent){
+  cloudCondition(temperatureC,sigmaPercent);
+  return {schema:EXPERIMENT_SCHEMA,version:EXPERIMENT_VERSION,
+    id:'custom',stages:[{t:0,label:'Custom constant conditions',
+      temperatureC,sigmaPercent}],stageIndex:0,
+    lastTemperatureC:temperatureC,lastSigmaPercent:sigmaPercent,
+    transitions:[],source:'User-defined atmosphere; uncalibrated kinetics',
+    calibrated:false,verticalVaporTransportSolved:false};
+}
 export function applyGrowthEnvironment(state,run,time){
   if(!run||run.schema!==EXPERIMENT_SCHEMA||run.version!==1)
     throw new Error('No versioned environment history');
