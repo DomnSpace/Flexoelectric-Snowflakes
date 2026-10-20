@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import {EXPERIMENT_PRESETS,EXPERIMENT_VERSION,waterSaturationIcePercent,
   cloudCondition,validatePreset,sampleGrowthHistory,makeExperimentRun,
-  makeCustomExperimentRun,applyGrowthEnvironment,cloneExperimentState} from '../solver/experiment-regimes.js';
+  makeCustomExperimentRun,applyGrowthEnvironment,cloneExperimentState,
+  observedHabitTendency} from '../solver/experiment-regimes.js';
 import {makeHexGrowthState,resolvedHexGrowthStep} from '../solver/hex25d.js';
 import {saturationMassDensityIce} from '../solver/postseed.js';
 import {iceIhProperties} from '../solver/ice-ih-eos.js';
@@ -9,6 +10,10 @@ import {localIceMass} from '../solver/ice-thickness.js';
 
 const close=(a,b,tol=1e-10)=>assert.ok(Math.abs(a-b)<tol*Math.max(Math.abs(a),Math.abs(b),1e-22),'Expected '+a+' ~= '+b);
 assert.equal(EXPERIMENT_VERSION,1);
+assert.match(observedHabitTendency(-2),/plate/i);
+assert.match(observedHabitTendency(-5),/needle/i);
+assert.match(observedHabitTendency(-15),/dendrite/i);
+assert.match(observedHabitTendency(-26),/vary/i);
 close(waterSaturationIcePercent(-15),15.74,.001);
 close(waterSaturationIcePercent(-5),4.98,.003);
 assert.ok(cloudCondition(-15,14).relativeHumidityOverWaterPercent<100);
