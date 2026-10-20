@@ -14,7 +14,8 @@ import {iceIhProperties} from './solver/ice-ih-eos.js';
 import {buildUniformLayerGroup,disposeLayerGroup,FIVE_LAYER_COUNT} from './render/uniform-five-layers.js';
 import {buildActualIceMeshes} from './render/actual-height-mesh.js';
 import {EXPERIMENT_PRESETS,cloudCondition,makeExperimentRun,
-  makeCustomExperimentRun,applyGrowthEnvironment,cloneExperimentState} from './solver/experiment-regimes.js';
+  makeCustomExperimentRun,applyGrowthEnvironment,cloneExperimentState,
+  observedHabitTendency} from './solver/experiment-regimes.js';
 
 /*
  * Snowflake Observatory
@@ -58,7 +59,7 @@ const labels = [
 ];
 const palette = ['#8de0ff','#b7a9ff','#f9cb8b','#72d8b7','#ff9da5','#e8efff'];
 let state, frames=[], selectedIndex=0, replay=false, playing=true, pending=false;
-let activeHabit='custom',stagedPresetId='dendrite',experimentRun=null;
+let activeHabit='custom',stagedPresetId='dendrite',experimentRun=null,appliedConfig=null;
 const isHex=()=>state?.topology==='triangular';
 const auditState=()=>isHex()?auditHexDomain(state):auditGrowthDomain(state);
 let lastFrame=performance.now(), accumulator=0, mesh=null, edge=null, layerGroup=null, worldScale=1;
@@ -108,6 +109,8 @@ function formatControls() {
     'ABOVE LIQUID WATER SATURATION · laboratory/transient, not a steady mixed-phase cloud':
     'At/below water-saturation reference · NOT a predicted morphology';
   $('cloudBoundary').classList.toggle('above-water',c.aboveWaterSaturation);
+  $('observedHabitBand').textContent=observedHabitTendency(Number($('temp').value))+
+    ' · observed tendency, not a calibrated growth regime';
   const scale=35;
   $('humidityFill').style.width=(100*Math.min(1,c.iceSupersaturationPercent/scale))+'%';
   $('humidityLimitMark').style.left=(100*Math.min(1,c.waterSaturationIcePercent/scale))+'%';
@@ -173,6 +176,7 @@ function reset(start=true) {
       if(next.N>161)throw new Error('Cartesian A/B solver is limited to 120 µm; choose triangular for 300 µm.');
       state=makeGrowth25DState(next);
     }
+    appliedConfig=JSON.parse(JSON.stringify(next));
     experimentRun=isHex()?
       (stagedPresetId?makeExperimentRun(stagedPresetId):
         makeCustomExperimentRun(Number($('temp').value),Number($('sigma').value))):
@@ -771,6 +775,24 @@ function downloadCsv(){
   }
   download('snowflake-observatory-'+new Date().toISOString().slice(0,10)+'.csv','text/csv;charset=utf-8',rows.join('\r\n')+'\r\n');
 }
+function downloadExperiment(){
+  if(!appliedConfig||!experimentRun)return;
+  const packet={
+    schema:'snowflake-observatory/experiment-export',
+    version:1,experiment:cloneExperimentState(experimentRun),
+    appliedSolverConfig:appliedConfig,
+    topology:state?.topology||'square',
+    numerical:{dtSeconds:STEPTIME,gridDxMeters:DX,
+      vaporRelaxationsPerStep:45,heatRelaxationsPerStep:55,
+      openDirichletBoundary:true},
+    observationalValidity:experimentRun.stages.map(e=>cloudCondition(e.temperatureC,e.sigmaPercent)),
+    source:experimentRun.source,
+    warning:'Candidate habit, NOT measured ice attachment or full 3D cloud physics',
+    lastCapturedModelTimeSeconds:frames.at(-1)?.t??0
+  };
+  download('snowflake-experiment-'+experimentRun.id+'.json','application/json;charset=utf-8',
+    JSON.stringify(packet,null,2)+'\n');
+}
 function downloadPng(){
   if(!renderer)return;
   renderer.render(scene,camera);
@@ -913,6 +935,7 @@ function setupEvents(){
     if(current())updateMesh(current());
   });
   $('csv').addEventListener('click',downloadCsv);
+  $('experimentExport').addEventListener('click',downloadExperiment);
   $('png').addEventListener('click',downloadPng);
   $('speed').addEventListener('change',()=>accumulator=0);
   $('scrub').addEventListener('input',()=>showReplay(Number($('scrub').value)));
