@@ -16,7 +16,7 @@
 <div class="shell">
   <header class="mast">
     <div class="brand"><span class="brand-icon" aria-hidden="true">❄</span><div><div class="eyebrow">DOMNSPACE / RESEARCH INSTRUMENT 002</div><h1>SNOWFLAKE <em>OBSERVATORY</em></h1></div></div>
-    <nav class="links" aria-label="Laboratories"><a href="./app/index.html">Activation</a><a href="./app/supercool.html">Supercooling</a><a href="./app/fields.html">Field lab</a><a href="./app/spatialfield.html">Spatial field</a><a target="_blank" rel="noopener noreferrer" href="https://github.com/DomnSpace/Flexoelectric-Snowflakes">Source ↗</a></nav>
+    <nav class="links" aria-label="Laboratories"><a href="./app/layered-lab.html">5-Layer Model B ↗</a><a href="./app/index.html">Activation</a><a href="./app/supercool.html">Supercooling</a><a href="./app/fields.html">Field lab</a><a href="./app/spatialfield.html">Spatial field</a><a target="_blank" rel="noopener noreferrer" href="https://github.com/DomnSpace/Flexoelectric-Snowflakes">Source ↗</a></nav>
   </header>
   <div class="metadata"><span class="live-dot"></span><span id="status">INITIALIZING PHYSICS</span><span class="meta-rule"></span><span>COUPLED VAPOR / THERMAL / KINETIC GROWTH</span><span class="meta-rule"></span><span id="stepLabel">STEP 0000</span><span class="grow"></span><span>2.5-D SOLVER · 3-D PRISM RECONSTRUCTION</span></div>
   <section class="stats" aria-label="Live measurements">
@@ -29,28 +29,42 @@
   <main class="workspace">
     <div class="visual-column">
       <section class="panel crystal-panel" aria-label="3D snowflake">
-        <div class="panel-top"><div><span class="index">01 / 3-D CRYSTAL</span><h2>Ice architecture <small>resolved outline / illuminated extrusion</small></h2></div><span class="chip" id="cameraLabel">ORBIT ENABLED</span></div>
+        <div class="panel-top"><div><span class="index">01 / 3-D CRYSTAL</span><h2>Ice architecture <small>local top / bottom / rim · measured height</small></h2></div><span class="chip" id="cameraLabel">ORBIT ENABLED</span></div>
         <div id="viewport" class="viewport">
           <div class="viewport-caption top-left">ICE Ih <span class="line"></span> BASAL PLANE</div>
           <div class="viewport-caption top-right"><span id="sizeLabel">— µm DOMAIN</span><span id="viewLabel">PRISM GEOMETRY</span></div>
           <div class="viewport-caption bottom-left">DRAG ROTATE <span>·</span> WHEEL ZOOM <span>·</span> DOUBLE-CLICK RESET VIEW</div>
-          <div class="axis-note" id="axisNote">X / Y · µm</div>
+          <div class="viewport-caption layer-caption" id="sliceStatus">SOLID LEGACY EXTRUSION · UNIFORM THICKNESS</div>
+           <div class="viewport-caption geometry-caption" id="heightGeometry">LEGACY CONTOUR PROXY</div>
+           <div class="axis-note" id="axisNote">X / Y · µm</div>
           <div id="errorOverlay" class="error-overlay" hidden></div>
         </div>
         <div class="controlbar">
           <button id="play" class="primary" type="button">❚❚ Pause</button>
           <button id="step" type="button">→ Step</button>
           <button id="reset" type="button">↺ Reset</button>
-          <button id="preset" type="button" title="Loads a dendritic morphology exploration preset">✳ Dendritic preset</button>
+          <label class="speed habit-picker">HABIT <select id="habit">
+              <option value="plate">−15 °C · Simple plate</option>
+              <option value="sector">−15 °C · Sectored candidate</option>
+              <option value="dendrite" selected>−15 °C · Stellar candidate</option>
+              <option value="history">Plate → arms → facets → branches</option>
+              <option value="warmPlate">−2 °C · Warm plate (limited)</option>
+              <option value="needle">−5 °C · Needle (3-D required)</option>
+              <option value="cappedColumn">Capped column (3-D required)</option>
+            </select></label>
+            <button id="preset" type="button" title="Stage an entire versioned experiment without restarting current growth">✳ Stage preset</button>
           <label class="speed">SPEED <select id="speed"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select></label>
-          <span class="grow"></span><button id="viewTop" title="Look straight down" type="button">TOP</button><button id="viewIso" title="Reset perspective" type="button">ISO</button>
+          <label class="speed layer-picker">ICE VIEW <select id="iceView" title="Toggle solid geometry / five optical layers without changing physical growth"><option value="solid" selected>Solid · legacy slab</option><option value="five">5 translucent height slices · uniform guide</option>
+             <option value="localSolid" disabled>Physical local top / bottom / rim · Pass 9</option>
+             <option value="localFive" disabled>5 actual local iso-height sections · Pass 9</option></select></label>
+           <span class="grow"></span><button id="viewTop" title="Look straight down" type="button">TOP</button><button id="viewIso" title="Reset perspective" type="button">ISO</button>
         </div>
       </section>
       <div class="lower-main">
         <section class="panel field-panel" aria-label="Spatial field slice">
-          <div class="panel-top"><div><span class="index">02 / SPATIAL FIELDS</span><h2>Transport field <small>actual solver grid</small></h2></div><select id="field"><option value="vapor">Vapor excess u</option><option value="temperature">ΔT [K]</option><option value="occupancy">Ice fraction φ</option></select></div>
+          <div class="panel-top"><div><span class="index">02 / SPATIAL FIELDS</span><h2>Transport field <small>actual solver grid</small></h2></div><select id="field"><option value="vapor">Vapor excess u</option><option value="temperature">ΔT [K]</option><option value="occupancy">Ice fraction φ</option><option value="thickness" disabled>Local ice thickness h [µm] · Pass 8</option><option value="electric">Electric |E| [MV/m]</option><option value="potential">Electric potential [V]</option></select></div>
           <div class="field-wrap"><canvas id="fieldCanvas" aria-label="Solver field image"></canvas><div class="field-scale"><span id="fieldMin">—</span><div class="scale-gradient"></div><span id="fieldMax">—</span></div></div>
-          <div class="field-footer"><span id="fieldInspect">HOVER FIELD TO INSPECT A CELL</span><span>GRID <b id="gridDim">—</b></span></div>
+          <div class="field-footer"><span id="fieldFidelity">SUBCELL INTERPOLATED DISPLAY · 0.75 µm MODEL SPACING</span><span id="fieldGeometry">SQUARE DIRICHLET FAR-FIELD · ARTIFACTS NEAR EDGES</span><span id="fieldInspect">HOVER FIELD TO INSPECT A CELL</span><span>GRID <b id="gridDim">—</b></span></div>
         </section>
         <section class="panel inspect-panel" aria-label="Physical interface budget">
           <div class="panel-top"><div><span class="index">03 / PHYSICS BUDGET</span><h2>Interface diagnostics</h2></div><span class="chip">MEASURED</span></div>
@@ -61,31 +75,96 @@
             <div><dt>Local interface cells</dt><dd id="bCells">—</dd></div>
             <div><dt>Curvature (mean)</dt><dd id="bCurve">—</dd></div>
             <div><dt>Capillary exponent (mean)</dt><dd id="bCap">—</dd></div>
+            <div><dt>Crystal kinetic phase</dt><dd id="bPhase">—</dd></div>
+            <div><dt>Relative capillary stiffness ε</dt><dd id="bStiffness">—</dd></div>
             <div><dt>Mass flux rate</dt><dd id="bFlux">—</dd></div>
+            <div><dt>Prism mass rate (lateral reservoir)</dt><dd id="bPrismFlux">LEGACY</dd></div>
+            <div><dt>Basal mass rate (external z reservoir)</dt><dd id="bBasalFlux">NOT COUPLED</dd></div>
+            <div><dt>Local thickness: mean / max</dt><dd id="bLocalHeight">UNIFORM</dd></div>
+            <div><dt>Ice-side mass ledger residual</dt><dd id="bMassResidual">NO LEDGER</dd></div>
+            <div><dt>Peak electric field</dt><dd id="bEField">—</dd></div>
+            <div><dt>Imposed flexoelectric polarization</dt><dd id="bPolar">—</dd></div>
+            <div><dt>Mean dielectric ln(c_eq ratio)</dt><dd id="bElectricShift">—</dd></div>
+            <div><dt>Poisson residual RMS</dt><dd id="bEResidual">—</dd></div>
           </dl>
-          <div class="notice">The displayed solid is reconstructed from the resolved 2-D phase-field contour; depth represents the model's basal thickness. It is <strong>not</strong> a full 3-D diffusion solution.</div>
+          <div class="notice" id="physicsDisclaimer">With Pass 8 local height enabled, Pass 9 reconstructs <strong>measured upper and lower surfaces, their rim, and five iso-height cross sections</strong> on the same triangular model grid. All features come from hTop, hBottom and φ; no artificial ridge accretion is added. Geometry is piecewise-linear at finite resolution, so its rendered volume is an approximation, <strong>not equal by definition</strong> to the solver's finite-volume ice ledger. Basal vapor comes from the separately recorded unresolved external z reservoir; no 3-D vapor PDE is solved.</div>
         </section>
       </div>
     </div>
     <aside class="panel instrument" aria-label="Experiment controls">
       <div class="panel-top"><div><span class="index">EXPERIMENT / PARAMETERS</span><h2>Growth conditions</h2></div><span class="chip">REPRODUCIBLE</span></div>
       <div class="sidecontent">
+        <div class="section-title">00 — EXPERIMENT SELECTION</div>
+        <div class="preset-cards" aria-label="Select a candidate physical experiment">
+          <button class="preset-tile" type="button" data-preset="plate">Compact plate <small>−15 °C · 3 %</small></button>
+          <button class="preset-tile" type="button" data-preset="sector">Sectored plate <small>−15 °C · 9 %</small></button>
+          <button class="preset-tile" type="button" data-preset="dendrite">Stellar candidate <small>−15 °C · 14 %</small></button>
+          <button class="preset-tile" type="button" data-preset="history">Growth history <small>3 → 13 → 5 → 14 %</small></button>
+        </div>
+        <div class="preset-explanation" id="experimentPreview">Candidate experiment · not a calibrated crystal morphology</div>
+        <div class="stage-summary" id="stagePreview">Single steady far-field environment</div>
         <div class="section-title">01 — ENVIRONMENT</div>
-        <label class="parameter" for="temp"><span>Temperature <b id="tempValue">−15 °C</b></span><input type="range" id="temp" min="-30" max="-2" step="1" value="-15"><small>Ambient far-field temperature</small></label>
-        <label class="parameter" for="sigma"><span>Ice supersaturation <b id="sigmaValue">8.0 %</b></span><input type="range" id="sigma" min="1" max="25" step=".5" value="8"><small>Far-field vapor excess over ice</small></label>
+        <label class="parameter" for="temp"><span>Temperature <b id="tempValue">−15 °C</b></span><input type="range" id="temp" min="-35" max="-1" step="1" value="-15"><small>Ambient far-field temperature</small></label>
+        <label class="parameter" for="sigma"><span>Ice supersaturation <b id="sigmaValue">14.0 %</b></span><input type="range" id="sigma" min="0" max="35" step=".5" value="14"><small>Far-field vapor excess over ice</small></label>
         <label class="parameter" for="pressure"><span>Ambient pressure <b id="pressureValue">101.3 kPa</b></span><input type="range" id="pressure" min="60" max="110" step="1" value="101"><small>Transport coefficients scaled with pressure</small></label>
-        <div class="section-title">02 — FACET KINETICS</div>
-        <label class="parameter" for="anisotropy"><span>Sixfold anisotropy <b id="anisotropyValue">0.18</b></span><input type="range" id="anisotropy" min="0" max=".70" step=".02" value=".18"><small>Azimuthal modulation: 1 + a cos(6θ)</small></label>
-        <label class="parameter" for="prism"><span>Prism nucleation barrier <b id="prismValue">0.0030</b></span><input type="range" id="prism" min=".0005" max=".02" step=".0005" value=".003"><small>σ₀ in α = A exp(−σ₀ / σ_surface)</small></label>
+        <div class="section-title">02 — LATTICE / TRANSPORT DOMAIN</div>
+        <label class="parameter" for="topology"><span>Numerical transport lattice <b id="topologyValue">6-neighbor triangular</b></span>
+          <select id="topology"><option value="square">Cartesian · 9-point isotropic</option><option value="triangular" selected>Triangular · 6-neighbor hexagonal cells (experimental)</option></select>
+          <small>Triangles connect six equidistant neighbors; hexagons are their dual control volumes. Each site = 0.75 µm, not an atom.</small>
+        </label>
+        <div class="toggles"><label><input id="autoExpand" type="checkbox" checked> Expand hex domain before the front reaches the boundary (up to 401² / 300 µm)</label></div>
+        <label class="parameter" for="fieldResolution"><span>Field display resolution <b id="fieldResolutionValue">1024 px</b></span>
+          <select id="fieldResolution"><option value="768">768 px · responsive</option><option value="1024" selected>1024 px · fine</option><option value="1536">1536 px · ultra</option></select>
+          <small>Sub-cell linear interpolation of actual numerical data. Higher display pixels are not new physical degrees of freedom.</small>
+        </label>
+        <label class="parameter" for="gridSize"><span>Basal-plane domain <b id="gridSizeValue">129 × 129 · 96.0 µm</b></span><select id="gridSize"><option value="73">73² · 54 µm · fast</option><option value="97">97² · 72 µm</option><option value="129" selected>129² · 96 µm · detailed</option><option value="161">161² · 120 µm</option>
+          <option value="201">201² · 150 µm</option><option value="257">257² · 192 µm</option>
+          <option value="321">321² · 240 µm · advanced</option><option value="401">401² · 300 µm · demanding</option></select><small>dx = 0.75 µm; a larger domain postpones boundary effects but does not resolve molecular bonds or fix kinetic models</small></label>
+        <div class="domain-report" id="domainReport" role="status" aria-live="polite"><b id="domainStatus">ASSESSING DOMAIN</b><span id="domainDetails">—</span></div>
+        <div class="section-title">03 — ICE THICKNESS / BUDGET (PASS 8)</div>
+        <div class="toggles"><label><input type="checkbox" id="localHeight"> Resolve local upper/lower ice heights (hex solver only; experimental)</label></div>
+        <div class="notice">New top/bottom arrays evolve from actual admitted prism and basal mass. Basal vapor source = <strong>open external vertical reservoir</strong>, not resolved 3-D diffusion. The physical thickness field appears under Spatial Fields; physical top/bottom meshes and five genuinely height-dependent cross sections are now available in ICE VIEW. Step bunching / macrostep ridge growth remains a separate physics study.</div>
+        <div class="section-title">04 — FACET KINETICS</div>
+        <label class="parameter" for="anisotropy"><span>Sixfold kinetic anisotropy <b id="anisotropyValue">0.50</b></span><input type="range" id="anisotropy" min="0" max=".70" step=".02" value=".50"><small>Factor: 1 + a cos(6(θ−φ)); θ = local outward interface normal, NOT radial arm angle.</small></label>
+        <label class="parameter" for="kineticPhase"><span>Crystal / kinetic phase <b id="kineticPhaseValue">30°</b></span><select id="kineticPhase"><option value="0">0° · original orientation</option><option value="15">15° · intermediate control</option><option value="30" selected>30° · stellar candidate / swapped extrema</option></select><small>Controlled orientation test; 30° does not automatically stabilize dendrite spines.</small></label>
+        <label class="parameter" for="surfaceEpsilon"><span>Surface-energy anisotropy ε <b id="surfaceEpsilonValue">0.000</b></span><select id="surfaceEpsilon"><option value="0">0 · isotropic capillarity</option><option value=".01">0.010 · weak positive stiffness</option><option value=".02">0.020 · stronger positive stiffness</option></select><small>γ+γ″ = γ₀[1−35ε cos(6(θ−φ))]; beyond |ε|≈0.0286 requires facet regularization.</small></label>
+        <label class="parameter" for="seedShape"><span>Crystal seed <b id="seedShapeValue">Circular</b></span><select id="seedShape"><option value="circle">Circle · unbiased seed</option><option value="hex">Hexagonal facet seed</option></select><small>Physical initial occupancy; not a drawn six-armed output template.</small></label>
+        <label class="parameter" for="seedPhase"><span>Hex seed vertex azimuth <b id="seedPhaseValue">0°</b></span><select id="seedPhase"><option value="0">0° · vertex along X</option><option value="15">15° · rotated control</option><option value="30">30° · facet along X</option></select><small>Independent seed orientation for diagnosing mesh locking.</small></label>
+        <label class="parameter" for="prism"><span>Prism nucleation barrier <b id="prismValue">0.0035</b></span><input type="range" id="prism" min=".0005" max=".02" step=".0005" value=".0035"><small>σ₀ in α = A exp(−σ₀ / σ_surface)</small></label>
+        <label class="parameter" for="basalSigma0"><span>Basal nucleation barrier <b id="basalSigma0Value">0.0100</b></span><input type="range" id="basalSigma0" min=".0005" max=".02" step=".0005" value=".01"><small>σ₀ basal (dimensionless): preset-specific uncalibrated model parameter</small></label>
+        <label class="parameter" for="basalA"><span>Basal attachment prefactor <b id="basalAValue">0.004</b></span><input type="range" id="basalA" min="0.001" max=".1" step=".001" value=".004"><small>Uncalibrated facet accommodation A; controls out-of-plane thickness</small></label>
         <label class="parameter" for="seed"><span>Initial seed radius <b id="seedValue">1.5 µm</b></span><input type="range" id="seed" min="1" max="4" step=".25" value="1.5"><small>Postcritical ice seed; not nucleation</small></label>
-        <div class="toggles"><label><input id="sdak" type="checkbox"> SDAK / edge enhancement</label><label><input id="capillarity" type="checkbox" checked> Gibbs–Thomson curvature</label><label><input id="rotate" type="checkbox" checked> Turntable camera</label></div>
+        <div class="toggles"><label><input id="sdak" type="checkbox" checked> SDAK / edge enhancement</label><label><input id="capillarity" type="checkbox" checked> Gibbs–Thomson curvature</label><label><input id="rotate" type="checkbox" checked> Turntable camera</label></div>
+        <div class="notice">ANISOTROPY EXPERIMENT: kinetic phase and capillary stiffness are separate contributions. 0°/30° comparison can expose axial tip splitting; neither setting is calibrated ice Ih surface data. Hex-only controls; Cartesian electric solver remains independent.</div>
+        <div class="section-title">05 — ELECTROSTATIC EXPERIMENT</div>
+        <div class="toggles"><label><input id="electricEnabled" type="checkbox"> Solve ∇·D = 0</label><label><input id="electricCouple" type="checkbox"> Apply dielectric-energy growth closure (approximate)</label></div>
+        <label class="parameter" for="eField"><span>Far-field magnitude <b id="eFieldValue">2.0 MV/m</b></span><input type="range" id="eField" min="0" max="10" step=".25" value="2"><small>High-field laboratory scenario, not natural weather</small></label>
+        <label class="parameter" for="eAngle"><span>Field azimuth <b id="eAngleValue">0°</b></span><input type="range" id="eAngle" min="0" max="360" step="5" value="0"><small>In-plane Dirichlet electric potential</small></label>
+        <label class="parameter" for="epsIce"><span>Ice dielectric response <b id="epsIceValue">3.2</b></span><select id="epsIce"><option value="3.2">3.2 · fast response</option><option value="90">90 · static illustrative</option></select><small>Frequency- and temperature-dependent parameter</small></label>
+        <label class="parameter" for="bendGradient"><span>Prescribed strain gradient <b id="bendGradientValue">0 m⁻¹</b></span><input id="bendGradient" type="range" min="0" max="5000" step="250" value="0"><small>External mechanical forcing; not calculated from curvature</small></label>
+        <label class="parameter" for="bendAngle"><span>Gradient azimuth <b id="bendAngleValue">0°</b></span><input id="bendAngle" type="range" min="0" max="360" step="5" value="0"></label>
+        <label class="parameter" for="muFlexo"><span>Flexo coefficient μ <b id="muFlexoValue">1.65 nC/m</b></span><input id="muFlexo" type="range" min="0" max="5" step=".05" value="1.65"><small>Illustrative ice Ih coefficient; anisotropy omitted</small></label>
+        <div class="notice">EXPERIMENTAL. P = μ∇ε uses a <strong>prescribed</strong> strain gradient; mechanics is not solved. Electric growth uses a separate, opt-in fixed-field dielectric free-energy approximation. Neither is calibrated against observed dendrite growth.</div>
+        <p class="sidebar-note" id="habitNote">Startup: staged stellar candidate; observational tendencies do not establish our model's facet coefficients. Select a preset to inspect it, Stage preset to populate controls, then Apply / Restart to actually start.</p>
+        <div class="cloud-boundary" id="cloudBoundary">
+          <div class="status-pair"><span>Water saturation / ice basis</span><strong id="waterLimit">—</strong></div>
+          <div class="humidity-meter" role="meter" aria-label="Ice supersaturation compared with water-saturation reference"><div id="humidityFill"></div><span id="humidityLimitMark"></span></div>
+          <div class="status-pair"><span>Humidity over liquid water</span><strong id="relativeWaterHumidity">—</strong></div>
+          <p id="atmosphereClassification">Observable atmospheric conditions · morphology remains experimental</p>
+          <p id="observedHabitBand">Observational temperature habit: uncalibrated model</p>
+        </div>
+        <div class="status-pair"><span>Applied experiment / phase</span><strong id="activeExperiment">—</strong></div>
+        <div class="status-pair"><span>Current far-field conditions</span><strong id="activeEnvironment">—</strong></div>
         <div class="pending" id="pending" hidden>PARAMETERS CHANGED · RESET TO APPLY</div>
-        <button id="apply" class="wide primary" type="button">↺ APPLY / RESTART SOLVER</button>
-        <div class="section-title">03 — MEASUREMENT / OUTPUT</div>
-        <div class="exports"><button id="csv" type="button">↓ Data CSV</button><button id="png" type="button">↓ View PNG</button></div>
-        <div class="section-title">04 — MODEL STATUS</div>
-        <p class="sidebar-note">Nine-point isotropic vapor/heat relaxation. Phase-fraction interface, curvature correction, prism/basal attachment kinetics, and latent-heat feedback. Deterministic for a fixed configuration.</p>
-        <div class="status-pair"><span>Model</span><strong>QUASI-STEADY 2.5-D</strong></div><div class="status-pair"><span>Scenario</span><strong id="scenario">REFERENCE · −15 °C</strong></div><div class="status-pair"><span>Units</span><strong>SI INTERNAL</strong></div>
+        <button id="apply" class="wide primary" type="button">▶ RUN EXPERIMENT / RESTART SOLVER</button>
+        <div class="section-title">06 — MEASUREMENT / OUTPUT</div>
+        <div class="exports"><button id="csv" type="button">↓ Data CSV</button><button id="experimentExport" type="button">↓ Experiment JSON</button><button id="png" type="button">↓ View PNG</button></div>
+        <div class="section-title">07 — MODEL STATUS</div>
+        <p class="sidebar-note">Triangular six-neighbor vapor/heat relaxation by default; Cartesian comparison remains selectable. Phase-fraction interface, curvature correction, prism/basal attachment kinetics, latent-heat feedback, and optional variable-permittivity electrostatics. Deterministic for a fixed configuration.</p>
+        <div class="status-pair"><span>Snapshot schema</span><strong id="snapshotVersion">v1</strong></div>
+        <div class="status-pair"><span>Ice height model</span><strong id="snapshotRepresentation">LEGACY UNIFORM SLAB</strong></div>
+        <div class="status-pair"><span>Model</span><strong>QUASI-STEADY 2.5-D</strong></div><div class="status-pair"><span>Scenario</span><strong id="scenario">REFERENCE · −15 °C</strong></div>
+        <div class="status-pair"><span>Model validity</span><strong id="validity">CHECKING</strong></div><div class="status-pair"><span>Electrostatics</span><strong id="electricReadout">DISABLED</strong></div><div class="status-pair"><span>Units</span><strong>SI INTERNAL</strong></div>
       </div>
     </aside>
   </main>
