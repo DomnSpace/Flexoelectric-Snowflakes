@@ -47,9 +47,12 @@
               <option value="plate">−15 °C · Simple plate</option>
               <option value="sector">−15 °C · Sectored candidate</option>
               <option value="dendrite" selected>−15 °C · Stellar candidate</option>
+              <option value="history">Plate → arms → facets → branches</option>
+              <option value="warmPlate">−2 °C · Warm plate (limited)</option>
               <option value="needle">−5 °C · Needle (3-D required)</option>
+              <option value="cappedColumn">Capped column (3-D required)</option>
             </select></label>
-            <button id="preset" type="button" title="Loads a literature-inspired scenario and explicitly uncalibrated kinetic parameters">✳ Load scenario</button>
+            <button id="preset" type="button" title="Stage an entire versioned experiment without restarting current growth">✳ Stage preset</button>
           <label class="speed">SPEED <select id="speed"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select></label>
           <label class="speed layer-picker">ICE VIEW <select id="iceView" title="Toggle solid geometry / five optical layers without changing physical growth"><option value="solid" selected>Solid · legacy slab</option><option value="five">5 translucent height slices · uniform guide</option>
              <option value="localSolid" disabled>Physical local top / bottom / rim · Pass 9</option>
@@ -91,9 +94,18 @@
     <aside class="panel instrument" aria-label="Experiment controls">
       <div class="panel-top"><div><span class="index">EXPERIMENT / PARAMETERS</span><h2>Growth conditions</h2></div><span class="chip">REPRODUCIBLE</span></div>
       <div class="sidecontent">
+        <div class="section-title">00 — EXPERIMENT SELECTION</div>
+        <div class="preset-cards" aria-label="Select a candidate physical experiment">
+          <button class="preset-tile" type="button" data-preset="plate">Compact plate <small>−15 °C · 3 %</small></button>
+          <button class="preset-tile" type="button" data-preset="sector">Sectored plate <small>−15 °C · 9 %</small></button>
+          <button class="preset-tile" type="button" data-preset="dendrite">Stellar candidate <small>−15 °C · 14 %</small></button>
+          <button class="preset-tile" type="button" data-preset="history">Growth history <small>3 → 13 → 5 → 14 %</small></button>
+        </div>
+        <div class="preset-explanation" id="experimentPreview">Candidate experiment · not a calibrated crystal morphology</div>
+        <div class="stage-summary" id="stagePreview">Single steady far-field environment</div>
         <div class="section-title">01 — ENVIRONMENT</div>
-        <label class="parameter" for="temp"><span>Temperature <b id="tempValue">−15 °C</b></span><input type="range" id="temp" min="-30" max="-2" step="1" value="-15"><small>Ambient far-field temperature</small></label>
-        <label class="parameter" for="sigma"><span>Ice supersaturation <b id="sigmaValue">14.0 %</b></span><input type="range" id="sigma" min="1" max="25" step=".5" value="14"><small>Far-field vapor excess over ice</small></label>
+        <label class="parameter" for="temp"><span>Temperature <b id="tempValue">−15 °C</b></span><input type="range" id="temp" min="-35" max="-1" step="1" value="-15"><small>Ambient far-field temperature</small></label>
+        <label class="parameter" for="sigma"><span>Ice supersaturation <b id="sigmaValue">14.0 %</b></span><input type="range" id="sigma" min="0" max="35" step=".5" value="14"><small>Far-field vapor excess over ice</small></label>
         <label class="parameter" for="pressure"><span>Ambient pressure <b id="pressureValue">101.3 kPa</b></span><input type="range" id="pressure" min="60" max="110" step="1" value="101"><small>Transport coefficients scaled with pressure</small></label>
         <div class="section-title">02 — LATTICE / TRANSPORT DOMAIN</div>
         <label class="parameter" for="topology"><span>Numerical transport lattice <b id="topologyValue">6-neighbor triangular</b></span>
@@ -119,6 +131,7 @@
         <label class="parameter" for="seedShape"><span>Crystal seed <b id="seedShapeValue">Circular</b></span><select id="seedShape"><option value="circle">Circle · unbiased seed</option><option value="hex">Hexagonal facet seed</option></select><small>Physical initial occupancy; not a drawn six-armed output template.</small></label>
         <label class="parameter" for="seedPhase"><span>Hex seed vertex azimuth <b id="seedPhaseValue">0°</b></span><select id="seedPhase"><option value="0">0° · vertex along X</option><option value="15">15° · rotated control</option><option value="30">30° · facet along X</option></select><small>Independent seed orientation for diagnosing mesh locking.</small></label>
         <label class="parameter" for="prism"><span>Prism nucleation barrier <b id="prismValue">0.0035</b></span><input type="range" id="prism" min=".0005" max=".02" step=".0005" value=".0035"><small>σ₀ in α = A exp(−σ₀ / σ_surface)</small></label>
+        <label class="parameter" for="basalSigma0"><span>Basal nucleation barrier <b id="basalSigma0Value">0.0100</b></span><input type="range" id="basalSigma0" min=".0005" max=".02" step=".0005" value=".01"><small>σ₀ basal (dimensionless): preset-specific uncalibrated model parameter</small></label>
         <label class="parameter" for="basalA"><span>Basal attachment prefactor <b id="basalAValue">0.004</b></span><input type="range" id="basalA" min="0.001" max=".1" step=".001" value=".004"><small>Uncalibrated facet accommodation A; controls out-of-plane thickness</small></label>
         <label class="parameter" for="seed"><span>Initial seed radius <b id="seedValue">1.5 µm</b></span><input type="range" id="seed" min="1" max="4" step=".25" value="1.5"><small>Postcritical ice seed; not nucleation</small></label>
         <div class="toggles"><label><input id="sdak" type="checkbox" checked> SDAK / edge enhancement</label><label><input id="capillarity" type="checkbox" checked> Gibbs–Thomson curvature</label><label><input id="rotate" type="checkbox" checked> Turntable camera</label></div>
@@ -132,10 +145,17 @@
         <label class="parameter" for="bendAngle"><span>Gradient azimuth <b id="bendAngleValue">0°</b></span><input id="bendAngle" type="range" min="0" max="360" step="5" value="0"></label>
         <label class="parameter" for="muFlexo"><span>Flexo coefficient μ <b id="muFlexoValue">1.65 nC/m</b></span><input id="muFlexo" type="range" min="0" max="5" step=".05" value="1.65"><small>Illustrative ice Ih coefficient; anisotropy omitted</small></label>
         <div class="notice">EXPERIMENTAL. P = μ∇ε uses a <strong>prescribed</strong> strain gradient; mechanics is not solved. Electric growth uses a separate, opt-in fixed-field dielectric free-energy approximation. Neither is calibrated against observed dendrite growth.</div>
-        <p class="sidebar-note" id="habitNote">Default: triangular stellar experiment, 30° kinetic phase and SDAK. Reloading a different habit changes its controls. Nakaya habit ranges are observational; these facet coefficients have not been calibrated to reproduce the habit diagram.</p>
-        <div class="status-pair"><span>Water-saturation cloud reference</span><strong id="waterLimit">—</strong></div>
+        <p class="sidebar-note" id="habitNote">Startup: staged stellar candidate; observational tendencies do not establish our model's facet coefficients. Select a preset to inspect it, Stage preset to populate controls, then Apply / Restart to actually start.</p>
+        <div class="cloud-boundary" id="cloudBoundary">
+          <div class="status-pair"><span>Water saturation / ice basis</span><strong id="waterLimit">—</strong></div>
+          <div class="humidity-meter" role="meter" aria-label="Ice supersaturation compared with water-saturation reference"><div id="humidityFill"></div><span id="humidityLimitMark"></span></div>
+          <div class="status-pair"><span>Humidity over liquid water</span><strong id="relativeWaterHumidity">—</strong></div>
+          <p id="atmosphereClassification">Observable atmospheric conditions · morphology remains experimental</p>
+        </div>
+        <div class="status-pair"><span>Applied experiment / phase</span><strong id="activeExperiment">—</strong></div>
+        <div class="status-pair"><span>Current far-field conditions</span><strong id="activeEnvironment">—</strong></div>
         <div class="pending" id="pending" hidden>PARAMETERS CHANGED · RESET TO APPLY</div>
-        <button id="apply" class="wide primary" type="button">↺ APPLY / RESTART SOLVER</button>
+        <button id="apply" class="wide primary" type="button">▶ RUN EXPERIMENT / RESTART SOLVER</button>
         <div class="section-title">06 — MEASUREMENT / OUTPUT</div>
         <div class="exports"><button id="csv" type="button">↓ Data CSV</button><button id="png" type="button">↓ View PNG</button></div>
         <div class="section-title">07 — MODEL STATUS</div>
