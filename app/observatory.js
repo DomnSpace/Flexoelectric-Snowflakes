@@ -13,6 +13,8 @@ import {versionLocalIceSnapshot,verifyLocalIceSnapshot} from './solver/ice-snaps
 import {iceIhProperties} from './solver/ice-ih-eos.js';
 import {buildUniformLayerGroup,disposeLayerGroup,FIVE_LAYER_COUNT} from './render/uniform-five-layers.js';
 import {buildActualIceMeshes} from './render/actual-height-mesh.js';
+import {EXPERIMENT_PRESETS,cloudCondition,makeExperimentRun,
+  makeCustomExperimentRun,applyGrowthEnvironment,cloneExperimentState} from './solver/experiment-regimes.js';
 
 /*
  * Snowflake Observatory
@@ -33,7 +35,7 @@ const BASE_STEPS_PER_SECOND = 3;
 const MAX_SNAPSHOTS = 360;
 const MAX_STORED_GRID_CELLS=360*73*73; // cap snapshot memory on 401² grids
 const DX=0.75e-6;
-const ids = ['temp','sigma','pressure','anisotropy','prism','basalA','seed','gridSize','kineticPhase','surfaceEpsilon','seedShape','seedPhase','sdak','capillarity','electricEnabled','electricCouple','eField','eAngle','epsIce','bendGradient','bendAngle','muFlexo'];
+const ids = ['temp','sigma','pressure','anisotropy','prism','basalA','basalSigma0','seed','gridSize','kineticPhase','surfaceEpsilon','seedShape','seedPhase','sdak','capillarity','electricEnabled','electricCouple','eField','eAngle','epsIce','bendGradient','bendAngle','muFlexo'];
 const labels = [
   ['temp','tempValue',v => num(v,0)+' °C'],
   ['sigma','sigmaValue',v => num(v,1)+' %'],
@@ -42,6 +44,7 @@ const labels = [
   ['prism','prismValue',v => num(v,4)],
   ['seed','seedValue',v => num(v,2)+' µm'],
   ['basalA','basalAValue',v => num(v,3)],
+  ['basalSigma0','basalSigma0Value',v=>num(v,4)],
   ['kineticPhase','kineticPhaseValue',v => num(v,0)+'°'],
   ['surfaceEpsilon','surfaceEpsilonValue',v => num(v,3)],
   ['seedPhase','seedPhaseValue',v => num(v,0)+'°'],
@@ -55,7 +58,7 @@ const labels = [
 ];
 const palette = ['#8de0ff','#b7a9ff','#f9cb8b','#72d8b7','#ff9da5','#e8efff'];
 let state, frames=[], selectedIndex=0, replay=false, playing=true, pending=false;
-let activeHabit='custom';
+let activeHabit='custom',stagedPresetId='dendrite',experimentRun=null;
 const isHex=()=>state?.topology==='triangular';
 const auditState=()=>isHex()?auditHexDomain(state):auditGrowthDomain(state);
 let lastFrame=performance.now(), accumulator=0, mesh=null, edge=null, layerGroup=null, worldScale=1;
@@ -72,7 +75,7 @@ function config() {
     localHeight:$('localHeight').checked,
     kinetics: {
       prism: {mode:'nucleation',A:1,sigma0:v('prism')},
-      basal: {...DEFAULT_ICE_KINETICS.basal,A:v('basalA')},
+      basal: {...DEFAULT_ICE_KINETICS.basal,A:v('basalA'),sigma0:v('basalSigma0')},
       anisotropy6: v('anisotropy'),
       kineticPhaseDeg:v('kineticPhase'),
       surfaceEnergyEpsilon:v('surfaceEpsilon'),
@@ -98,10 +101,16 @@ function cloudSaturationSigma(tC){
 function formatControls() {
   for(const [id,out,fmt] of labels) $(out).textContent=fmt(Number($(id).value));
   $('seedShapeValue').textContent=$('seedShape').value==='hex'?'Hexagonal':'Circular';
-  const cap=cloudSaturationSigma(Number($('temp').value));
-  const above=Number($('sigma').value)/100>cap+1e-7;
-  $('waterLimit').textContent=num(cap*100,1)+' % above ice'+(above?' · ABOVE WATER SATURATION':'');
-  $('waterLimit').style.color=above?'#ffcb98':'';
+  const c=cloudCondition(Number($('temp').value),Number($('sigma').value));
+  $('waterLimit').textContent=num(c.waterSaturationIcePercent,2)+' % ice supersat.';
+  $('relativeWaterHumidity').textContent=num(c.relativeHumidityOverWaterPercent,1)+' %';
+  $('atmosphereClassification').textContent=c.aboveWaterSaturation?
+    'ABOVE LIQUID WATER SATURATION · laboratory/transient, not a steady mixed-phase cloud':
+    'At/below water-saturation reference · NOT a predicted morphology';
+  $('cloudBoundary').classList.toggle('above-water',c.aboveWaterSaturation);
+  const scale=35;
+  $('humidityFill').style.width=(100*Math.min(1,c.iceSupersaturationPercent/scale))+'%';
+  $('humidityLimitMark').style.left=(100*Math.min(1,c.waterSaturationIcePercent/scale))+'%';
 }
 function setStatus(message, error=false) {
   $('status').textContent=message;
@@ -132,6 +141,8 @@ function snap() {
     },
     budget:state.lastBudget?{...state.lastBudget}:null,
     audit:auditState(),habit:activeHabit,
+    experiment:cloneExperimentState(experimentRun),
+    pressurePa:state.pressurePa,
     waterSaturationPercent:cloudSaturationSigma(state.Tinf-273.15)*100,
     deposited:state.totalDepositedMass, energy:state.totalLatentHeat
   };
@@ -162,6 +173,10 @@ function reset(start=true) {
       if(next.N>161)throw new Error('Cartesian A/B solver is limited to 120 µm; choose triangular for 300 µm.');
       state=makeGrowth25DState(next);
     }
+    experimentRun=isHex()?
+      (stagedPresetId?makeExperimentRun(stagedPresetId):
+        makeCustomExperimentRun(Number($('temp').value),Number($('sigma').value))):
+      makeCustomExperimentRun(Number($('temp').value),Number($('sigma').value));
     frames=[];replay=false;playing=start;accumulator=0;
     const localViewOptions=['localSolid','localFive'];
     for(const opt of $('iceView').options)
@@ -178,7 +193,7 @@ function reset(start=true) {
     $('errorOverlay').hidden=true;
     setPending(false);
     capture();sync();setStatus(start?'SOLVER RUNNING':'SOLVER PAUSED');
-    const selected=GROWTH_HABITS[activeHabit];
+    const selected=EXPERIMENT_PRESETS[activeHabit];
     $('scenario').textContent=(selected?.supported?selected.name.toUpperCase():'CUSTOM EXPERIMENT')+
       ' · '+num(Number($('temp').value),0)+' °C / '+num(Number($('sigma').value),1)+' %';
     $('electricReadout').textContent=isHex()?'NOT COUPLED TO TRIANGULAR MESH':
@@ -215,7 +230,10 @@ function advance() {
     return;
     }
     // Each model frame advances exactly one resolved transport + deposition step.
-    if(isHex())resolvedHexGrowthStep(state,STEPTIME,{vaporIterations:45,heatIterations:55});
+    if(isHex()){
+      if(experimentRun)applyGrowthEnvironment(state,experimentRun,state.t);
+      resolvedHexGrowthStep(state,STEPTIME,{vaporIterations:45,heatIterations:55});
+    }
     else resolvedGrowthStep(state,STEPTIME,{vaporIterations:45,heatIterations:55});
     capture();sync();
     const d=current().audit;
@@ -243,6 +261,11 @@ function sync() {
   if(s.snapshotSchema.version===2)verifyLocalIceSnapshot(s);
   else verifyIceSnapshot(s);
   $('snapshotVersion').textContent='v'+s.snapshotSchema.version+' · '+s.snapshotSchema.topology;
+  const ex=s.experiment;
+  $('activeExperiment').textContent=(ex?.id||'custom')+' · '+(ex?.stageLabel||'steady');
+  $('activeEnvironment').textContent=num(s.Tinf-273.15,1)+' °C / '+
+    num((s.experiment?.lastSigmaPercent??Number($('sigma').value)),2)+' % ice / '+
+    num(s.pressurePa/1000,0)+' kPa';
   $('snapshotRepresentation').textContent=s.snapshotSchema.version===2?
     'LOCAL TOP/BOTTOM · OPEN Z RESERVOIR':'UNIFORM SLAB · NO LOCAL HEIGHT';
   $('kTime').innerHTML=num(s.t,1)+' <small>s</small>';
@@ -710,7 +733,10 @@ function downloadCsv(){
     'topology','domain_expansions','kinetic_phase_deg','surface_epsilon','seed_shape','seed_phase_deg',
     'snapshot_schema_version','local_height_active','physical_ice_mass_pg','prism_in_pg','external_vertical_basal_in_pg',
     'prism_mass_rate_pg_s','basal_mass_rate_pg_s','thickness_mean_um','thickness_max_um',
-    'ice_ledger_residual_fg','ice_ledger_relative_residual','vertical_vapor_transport_solved'];
+    'ice_ledger_residual_fg','ice_ledger_relative_residual','vertical_vapor_transport_solved',
+    'experiment_schema_version','experiment_id','growth_stage_index','growth_stage_label',
+    'ambient_temperature_C','ambient_ice_supersaturation_percent','ambient_pressure_kPa',
+    'relative_humidity_water_percent','above_water_saturation','history_transition_count'];
   const rows=[columns.join(',')];
   for(const s of frames){
     const b=s.budget||{},m=s.morph;
@@ -733,7 +759,14 @@ function downloadCsv(){
       s.snapshotSchema.version===2?um(s.iceStructure.maxLocalThicknessM):'',
       s.iceStructure.ledgerResidualKg===undefined?'':s.iceStructure.ledgerResidualKg*1e15,
       b.relativeMassResidual??'',
-      s.iceStructure.verticalVaporTransportSolved?1:0];
+      s.iceStructure.verticalVaporTransportSolved?1:0,
+      s.experiment?.version??'',s.experiment?.id??'',s.experiment?.stageIndex??0,
+      s.experiment?.stageLabel??'',
+      s.Tinf-273.15,s.experiment?.lastSigmaPercent??'',
+      s.pressurePa/1000,
+      cloudCondition(s.Tinf-273.15,s.experiment?.lastSigmaPercent??0).relativeHumidityOverWaterPercent,
+      cloudCondition(s.Tinf-273.15,s.experiment?.lastSigmaPercent??0).aboveWaterSaturation?1:0,
+      s.experiment?.transitions?.length??0];
     rows.push(values.map(v=>v??'').join(','));
   }
   download('snowflake-observatory-'+new Date().toISOString().slice(0,10)+'.csv','text/csv;charset=utf-8',rows.join('\r\n')+'\r\n');
@@ -755,36 +788,56 @@ function showReplay(index){
   sync();
 }
 function describeSelectedHabit(){
-  const habit=GROWTH_HABITS[$('habit').value];
-  if(!habit)return;
-  $('habitNote').textContent=(habit.supported?'OBSERVED HABIT TARGET · ':'NOT SIMULATED · ')+
-    habit.expectation+' '+(habit.limitation||habit.calibration)+'. '+habit.evidence+'.';
-  $('preset').disabled=!habit.supported;
-  $('preset').title=habit.supported?'Apply exploratory scenario; no guaranteed morphology':habit.limitation;
+  const key=$('habit').value,p=EXPERIMENT_PRESETS[key];
+  if(!p)return;
+  $('habitNote').textContent=(p.supported?'OBSERVATIONAL HABIT TARGET · ':'NOT SIMULATED · ')+
+    p.description+' '+(p.limitations||p.calibration)+'.';
+  $('experimentPreview').textContent=(p.supported?'CANDIDATE · ':'REFERENCE ONLY · ')+
+    p.name+' — '+p.description+' Model kinetics are NOT temperature-calibrated.';
+  const stages=p.stages||[{t:0,label:'Steady environment',
+    temperatureC:p.controls.temperatureC,sigmaPercent:p.controls.sigmaPercent}];
+  $('stagePreview').textContent=stages.map(x=>x.t+' s · '+x.label+
+    ' ('+x.temperatureC+' °C, '+x.sigmaPercent+' %)').join(' → ');
+  $('preset').disabled=!p.supported;
+  $('preset').title=p.supported?'Stage full preset without resetting current simulation':p.limitations;
+  document.querySelectorAll('[data-preset]').forEach(el=>
+    el.classList.toggle('selected',el.dataset.preset===key));
+}
+function markCustom(){
+  activeHabit='custom';stagedPresetId=null;
+  setPending(true);
 }
 function loadSelectedHabit(){
-  const key=$('habit').value,habit=GROWTH_HABITS[key];
-  if(!habit?.supported){
+  const key=$('habit').value,p=EXPERIMENT_PRESETS[key];
+  if(!p?.supported){
     describeSelectedHabit();
     setStatus('UNSUPPORTED HABIT · NEEDLE/COLUMN REQUIRES RESOLVED 3-D',true);
     return;
   }
+  const c=p.controls;
   const values={
-    temp:habit.temperatureC,sigma:habit.sigmaPercent,pressure:habit.pressureKPa,
-    anisotropy:habit.anisotropy6,prism:habit.prismSigma0,basalA:habit.basalA,
-    seed:habit.seedRadiusUm,gridSize:habit.gridN
+    temp:c.temperatureC,sigma:c.sigmaPercent,pressure:c.pressureKPa,
+    anisotropy:c.anisotropy6,prism:c.prismSigma0,basalA:c.basalA,
+    basalSigma0:c.basalSigma0,seed:c.seedRadiusUm,gridSize:c.gridN,
+    kineticPhase:c.kineticPhaseDeg,surfaceEpsilon:c.surfaceEnergyEpsilon,
+    seedPhase:c.seedPhaseDeg,
+    eField:c.eFieldMVm,eAngle:c.eAngleDeg,epsIce:c.epsIce,
+    bendGradient:c.bendGradient,bendAngle:c.bendAngleDeg,muFlexo:c.muFlexo
   };
   for(const [id,value] of Object.entries(values))$(id).value=String(value);
-  $('sdak').checked=habit.sdak;$('capillarity').checked=habit.capillarity;
-  // Weather scenarios are neutral; electric forcing is a separate experiment.
-  $('electricEnabled').checked=false;$('electricCouple').checked=false;
-  $('eField').value='2';$('bendGradient').value='0';
-  $('kineticPhase').value=String(habit.kineticPhaseDeg??0);
-  $('surfaceEpsilon').value=String(habit.surfaceEnergyEpsilon??0);
-  $('seedShape').value='circle';$('seedPhase').value='0';
-  $('topology').value='triangular';topologyControls();
-  activeHabit=key;formatControls();reset(true);describeSelectedHabit();
+  $('seedShape').value=c.seedShape;
+  for(const [id,value] of Object.entries({
+    sdak:c.sdak,capillarity:c.capillarity,localHeight:c.localHeight,
+    autoExpand:c.autoExpand,electricEnabled:c.electricEnabled,
+    electricCouple:c.electricCouple
+  }))$(id).checked=Boolean(value);
+  $('topology').value=c.topology;
+  activeHabit=key;stagedPresetId=key;
+  topologyControls();formatControls();describeSelectedHabit();
+  setPending(true);
+  setStatus('PRESET STAGED · CLICK RUN EXPERIMENT TO RESTART');
 }
+
 function topologyControls(){
   const hex=$('topology').value==='triangular';
   // The Poisson module is currently discretized on the Cartesian grid.
@@ -816,19 +869,18 @@ function setupEvents(){
   describeSelectedHabit();
   topologyControls();
   $('topology').addEventListener('change',()=>{
-    activeHabit='custom';topologyControls();setPending(true);
+    markCustom();topologyControls();
   });
   $('localHeight').addEventListener('change',()=>{
-    activeHabit='custom';
+    markCustom();
     topologyControls();
-    setPending(true);
   });
   $('fieldResolution').addEventListener('change',()=>{
     $('fieldResolutionValue').textContent=$('fieldResolution').value+' px';
     if(current())drawField(current());
   });
   for(const [id] of labels)$(id).addEventListener('input',()=>{
-    activeHabit='custom';formatControls();setPending(true);
+    markCustom();formatControls();
   });
   for(const id of ['sdak','capillarity','electricEnabled','electricCouple','epsIce',
       'kineticPhase','surfaceEpsilon','seedShape','seedPhase'])$(id).addEventListener('change',()=>{
@@ -846,6 +898,11 @@ function setupEvents(){
   $('play').addEventListener('click',play);
   $('habit').addEventListener('change',describeSelectedHabit);
   $('preset').addEventListener('click',loadSelectedHabit);
+  document.querySelectorAll('[data-preset]').forEach(button=>
+    button.addEventListener('click',()=>{
+      $('habit').value=button.dataset.preset;
+      loadSelectedHabit();
+    }));
   $('field').addEventListener('change',()=>{if(current())drawField(current());});
   $('fieldCanvas').addEventListener('pointermove',onFieldMove);
   $('fieldCanvas').addEventListener('pointerleave',()=>$('fieldInspect').textContent='HOVER FIELD TO INSPECT A CELL');
@@ -890,5 +947,6 @@ setupEvents();
 try{
   initializeScene();
   loadSelectedHabit();
+  reset(true);
 }catch(e){fail(e);}
 requestAnimationFrame(loop);
