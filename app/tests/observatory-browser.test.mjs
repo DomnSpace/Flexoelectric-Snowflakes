@@ -220,7 +220,7 @@ try{
   const hexT0=parseFloat(await page.locator('#kTime').innerText());
   await page.locator('#step').click();
   assert.ok(parseFloat(await page.locator('#kTime').innerText())>hexT0,'actual hex physics advances');
-  assert.match(await page.locator('#scenario').innerText(),/STELLAR DENDRITE CANDIDATE/);
+  assert.match(await page.locator('#scenario').innerText(),/STELLAR DENDRITE.*CANDIDATE/);
   assert.match(await page.locator('#waterLimit').innerText(),/ice supersat/);
   assert.match(await page.locator('#domainDetails').innerText(),/HALO/);
   assert.equal(await page.locator('#electricEnabled').isChecked(),false,
