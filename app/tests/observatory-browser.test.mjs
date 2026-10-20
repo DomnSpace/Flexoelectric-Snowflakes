@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright-core';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const browser=await chromium.launch({
@@ -30,6 +30,12 @@ try{
   assert.equal(await page.locator('#gridSize').inputValue(),'129');
   assert.equal(await page.locator('#sdak').isChecked(),true);
   assert.equal(await page.locator('#electricEnabled').isChecked(),false);
+  assert.equal(await page.locator('#basalSigma0').inputValue(),'0.01');
+  assert.match(await page.locator('#activeExperiment').innerText(),/dendrite/i);
+  assert.match(await page.locator('#experimentPreview').innerText(),/CANDIDATE/);
+  assert.match(await page.locator('#observedHabitBand').innerText(),/dendrite/i);
+  assert.match(await page.locator('#relativeWaterHumidity').innerText(),/98\.5/);
+  assert.equal(await page.locator('#cloudBoundary').evaluate(el=>el.classList.contains('above-water')),false);
   assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),1024,
     'hi-res triangular phase display renders from real physical grid');
   for(const id of ['radialGraph','growthGraph','modeGraph']){
@@ -194,7 +200,13 @@ try{
   assert.match(download.suggestedFilename(),/\.csv$/);
   // Preset switches are observational hypotheses, not geometry shortcuts.
   await page.locator('#habit').selectOption('dendrite');
+  const beforeStageTime=await page.locator('#kTime').innerText();
   await page.locator('#preset').click();
+  assert.equal(await page.locator('#kTime').innerText(),beforeStageTime,
+    'selecting/staging a preset never resets the active crystal');
+  assert.equal(await page.locator('#pending').isVisible(),true);
+  await page.locator('#apply').click();
+  assert.equal(await page.locator('#pending').isVisible(),false);
   assert.equal(await page.locator('#topology').inputValue(),'triangular');
   assert.equal(await page.locator('#kineticPhase').inputValue(),'30',
     'reloading dendrite must not reset the intended orientation to zero');
@@ -209,8 +221,8 @@ try{
   const hexT0=parseFloat(await page.locator('#kTime').innerText());
   await page.locator('#step').click();
   assert.ok(parseFloat(await page.locator('#kTime').innerText())>hexT0,'actual hex physics advances');
-  assert.match(await page.locator('#scenario').innerText(),/STELLAR DENDRITE CANDIDATE/);
-  assert.match(await page.locator('#waterLimit').innerText(),/above ice/);
+  assert.match(await page.locator('#scenario').innerText(),/STELLAR DENDRITE.*CANDIDATE/);
+  assert.match(await page.locator('#waterLimit').innerText(),/ice supersat/);
   assert.match(await page.locator('#domainDetails').innerText(),/HALO/);
   assert.equal(await page.locator('#electricEnabled').isChecked(),false,
     'atmospheric habit presets must not silently energize the electric model');
@@ -220,6 +232,8 @@ try{
   assert.match(await page.locator('#habitNote').innerText(),/not simulated/i);
   await page.locator('#habit').selectOption('plate');
   await page.locator('#preset').click();
+  assert.equal(await page.locator('#basalSigma0').inputValue(),'0.01');
+  await page.locator('#apply').click();
   assert.equal(await page.locator('#gridSize').inputValue(),'97');
   assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),1024);
   assert.equal(await page.locator('#topology').inputValue(),'triangular');
@@ -227,6 +241,41 @@ try{
     'compact plate remains a genuine 0-degree comparison control');
   assert.equal(Number(await page.locator('#basalA').inputValue()),.009);
   assert.match(await page.locator('#domainStatus').innerText(),/VALIDITY|CAUTION/);
+  assert.equal(await page.locator('#errorOverlay').isVisible(),false);
+  // New staged history: a continuous experiment, not painted target shapes.
+  await page.locator('#habit').selectOption('history');
+  assert.match(await page.locator('#stagePreview').innerText(),/Compact core/);
+  await page.locator('#preset').click();
+  assert.equal(await page.locator('#sigma').inputValue(),'3');
+  assert.equal(await page.locator('#localHeight').isChecked(),true);
+  assert.equal(await page.locator('#pending').isVisible(),true);
+  await page.locator('#apply').click();
+  assert.match(await page.locator('#activeExperiment').innerText(),/history.*Compact core/);
+  assert.match(await page.locator('#snapshotVersion').innerText(),/v2/);
+  assert.match(await page.locator('#activeEnvironment').innerText(),/3\.00 % ice/);
+  const protocolDownloadPromise=page.waitForEvent('download');
+  await page.locator('#experimentExport').click();
+  const protocolDownload=await protocolDownloadPromise;
+  assert.match(protocolDownload.suggestedFilename(),/\.json$/);
+  const protocol=JSON.parse(await readFile(await protocolDownload.path(),'utf8'));
+  assert.equal(protocol.schema,'snowflake-observatory/experiment-export');
+  assert.equal(protocol.experiment.id,'history');
+  assert.equal(protocol.experiment.stages.length,4,'future stages remain included in protocol');
+  assert.equal(protocol.appliedSolverConfig.kinetics.basal.sigma0,.01,
+    'basal nucleation barrier really enters reproducible physical config');
+  assert.equal(protocol.appliedSolverConfig.localHeight,true);
+  assert.equal(protocol.numerical.openDirichletBoundary,true);
+  await page.locator('#step').click();
+  assert.equal(await page.locator('#errorOverlay').isVisible(),false);
+  // Editing the configuration clears the staged multi-regime timeline.
+  await page.locator('#sigma').evaluate(el=>{
+    el.value='6';el.dispatchEvent(new Event('input',{bubbles:true}));
+  });
+  await page.locator('#apply').click();
+  assert.match(await page.locator('#activeExperiment').innerText(),/custom/);
+  await page.locator('#habit').selectOption('plate');
+  await page.locator('#preset').click();
+  await page.locator('#apply').click();
   assert.equal(await page.locator('#errorOverlay').isVisible(),false);
   // Controlled 30° test must reach the HEX PHYSICS, not just its labels.
   await page.locator('#kineticPhase').selectOption('30');

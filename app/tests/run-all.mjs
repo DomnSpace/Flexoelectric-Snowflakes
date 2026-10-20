@@ -11,6 +11,7 @@ const tests = [
   './postseed.test.mjs',
   './growth25d.test.mjs',
   './habit-domain.test.mjs',
+  './experiment-regimes.test.mjs',
   './hex25d.test.mjs',
   './anisotropy-phase.test.mjs',
   './pass7-snapshot-layers.test.mjs',

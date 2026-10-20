@@ -69,6 +69,10 @@ A backward-Euler implicit solver replaces Step 2's nanosecond-limited explicit t
 
 **No new vertical ice growth, local solved thickness or vapor competition is claimed by Step 1.** The five transparent layers remain explicitly labeled a uniform-slab preview. Model B's conservative gas/ice face-flux interface is the next implementation gate; the original solver and current GitHub Pages remain intact.
 
+## Pass 10 — Experiment presets, humidity validity and growth histories
+
+[PASS10_GROWTH_REGIMES.md](PASS10_GROWTH_REGIMES.md) documents the new observational candidate presets, temperature-dependent water-saturation reference, the staged **−15 °C: 3 → 13 → 5 → 14% ice supersaturation** continuous growth-history experiment, independent basal σ₀ loading, and versioned environment metadata/CSV. **Stage preset** prepares complete conditions without restarting the active crystal; **Run experiment** applies those conditions. Time-varying environments rebase vapor from preserved absolute gas density before resetting the OPEN Dirichlet far-field boundary. Needle/capped column entries remain unsupported by the 2.5-D solver. The attachment coefficients are explicitly uncalibrated.
+
 ## Pass 9 — Real local surface reconstruction and ice ridge research
 
 [PASS9_HEIGHT_AND_RIDGE_RESEARCH.md](PASS9_HEIGHT_AND_RIDGE_RESEARCH.md) reviews observed snowflake **macrosteps, step bunching, and ridge formation**, explicitly rejecting ad hoc van der Waals alignment/rotation as a manufactured ridge source. Pass 9 reconstructs the live opt-in Pass 8 local top/bottom height surface and ice rim on the physical triangular grid and clips **five actual z cross-sections**. Choose **ICE VIEW → Physical local top / bottom / rim** or **5 actual local iso-height sections** after enabling **Resolve local upper/lower ice heights**. The old uniform views remain. Surface details only appear if the solver produced them: no ridge deposition or artificial branches are added. Render LOD on 300 µm domains is explicitly distinguished from the 0.75 µm physical lattice and does not change mass, time, vapor or heat calculations.
