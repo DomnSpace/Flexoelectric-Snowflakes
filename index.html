@@ -151,13 +151,14 @@
           <div class="humidity-meter" role="meter" aria-label="Ice supersaturation compared with water-saturation reference"><div id="humidityFill"></div><span id="humidityLimitMark"></span></div>
           <div class="status-pair"><span>Humidity over liquid water</span><strong id="relativeWaterHumidity">—</strong></div>
           <p id="atmosphereClassification">Observable atmospheric conditions · morphology remains experimental</p>
+          <p id="observedHabitBand">Observational temperature habit: uncalibrated model</p>
         </div>
         <div class="status-pair"><span>Applied experiment / phase</span><strong id="activeExperiment">—</strong></div>
         <div class="status-pair"><span>Current far-field conditions</span><strong id="activeEnvironment">—</strong></div>
         <div class="pending" id="pending" hidden>PARAMETERS CHANGED · RESET TO APPLY</div>
         <button id="apply" class="wide primary" type="button">▶ RUN EXPERIMENT / RESTART SOLVER</button>
         <div class="section-title">06 — MEASUREMENT / OUTPUT</div>
-        <div class="exports"><button id="csv" type="button">↓ Data CSV</button><button id="png" type="button">↓ View PNG</button></div>
+        <div class="exports"><button id="csv" type="button">↓ Data CSV</button><button id="experimentExport" type="button">↓ Experiment JSON</button><button id="png" type="button">↓ View PNG</button></div>
         <div class="section-title">07 — MODEL STATUS</div>
         <p class="sidebar-note">Triangular six-neighbor vapor/heat relaxation by default; Cartesian comparison remains selectable. Phase-fraction interface, curvature correction, prism/basal attachment kinetics, latent-heat feedback, and optional variable-permittivity electrostatics. Deterministic for a fixed configuration.</p>
         <div class="status-pair"><span>Snapshot schema</span><strong id="snapshotVersion">v1</strong></div>
