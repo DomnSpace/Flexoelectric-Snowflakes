@@ -29,3 +29,28 @@ button:disabled{opacity:.5;cursor:not-allowed}
   .geometry-caption{bottom:72px;left:15px;font-size:8px;max-width:94%}
   .layer-picker select{min-width:0}
 }
+
+/* Experiment configuration: habit targets, not morphology guarantees. */
+.preset-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:0 0 12px}
+.preset-tile{display:grid;gap:5px;text-align:left;align-items:start;min-height:66px;
+  color:#cce9f4;border:1px solid #285669;background:#0d2532;border-radius:9px;padding:10px;
+  font-size:12px;line-height:1.25;cursor:pointer}
+.preset-tile small{display:block;color:#83b7cf;font-size:10px}
+.preset-tile:hover{border-color:#75cde8;background:#164052}
+.preset-tile.selected{border:1px solid #80d3eb;background:#18445a;
+  box-shadow:inset 0 0 0 1px #498ead}
+.preset-explanation,.stage-summary{font-size:11px;line-height:1.6;
+  padding:10px 12px;border:1px solid #294d63;border-radius:8px;margin:9px 0;color:#a5cedc}
+.stage-summary{color:#97bbcd;background:#091e2a;font-variant-numeric:tabular-nums}
+.cloud-boundary{margin:12px 0;padding:12px;background:#09232e;border:1px solid #376d82;
+  border-radius:9px;display:grid;gap:9px}
+.cloud-boundary .status-pair{margin:0}
+.cloud-boundary p{font-size:10px;line-height:1.45;color:#8fc8df;margin:0}
+.humidity-meter{width:100%;height:13px;position:relative;background:#173545;border-radius:12px;overflow:hidden}
+.humidity-meter div{position:absolute;top:0;bottom:0;left:0;background:#54bee3;transition:width .15s}
+.humidity-meter span{position:absolute;top:0;bottom:0;width:3px;background:#f3ebce;box-shadow:0 0 0 1px #18323d}
+.cloud-boundary.above-water{border-color:#ae7350;background:#302922}
+.cloud-boundary.above-water .humidity-meter div{background:#e99c73}
+.cloud-boundary.above-water p{color:#ffd1a9}
+@media(max-width:570px){.preset-cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .preset-tile{font-size:11px;padding:9px;min-height:70px}}
