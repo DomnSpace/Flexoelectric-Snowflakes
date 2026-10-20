@@ -21,6 +21,19 @@ export function waterSaturationIcePercent(tC){
   if(!(T>110))throw new RangeError('Invalid cloud temperature');
   return 100*(saturationVaporPressureWaterMK(T)/saturationVaporPressureIceMK(T)-1);
 }
+/**
+ * Broad, qualitative Nakaya/Libbrecht TEMPERATURE corridors only. These
+ * boundaries are interpretive UI bands, NOT thermodynamic phase lines or
+ * empirically sharp habit transition temperatures.
+ */
+export function observedHabitTendency(tC){
+  if(!Number.isFinite(tC))throw new RangeError('Nonfinite temperature');
+  if(tC>=-3)return 'Warm plate tendency near −2 °C · temperature habit only';
+  if(tC>=-8)return 'Column / needle tendency near −5 °C · unsupported in 2.5-D';
+  if(tC>=-12)return 'Broad plate–column transition region · humidity dependent';
+  if(tC>=-18)return 'Plate / stellar dendrite tendency near −15 °C · humidity dependent';
+  return 'Cold-crystal habits vary · consult observed temperature–humidity diagram';
+}
 export function cloudCondition(tC,sigmaPercent){
   if(!Number.isFinite(tC)||!Number.isFinite(sigmaPercent)||
     sigmaPercent<0)throw new RangeError('Invalid far-field cloud condition');
