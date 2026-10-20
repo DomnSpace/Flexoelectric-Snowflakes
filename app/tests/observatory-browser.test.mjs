@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright-core';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const browser=await chromium.launch({
@@ -33,6 +33,7 @@ try{
   assert.equal(await page.locator('#basalSigma0').inputValue(),'0.01');
   assert.match(await page.locator('#activeExperiment').innerText(),/dendrite/i);
   assert.match(await page.locator('#experimentPreview').innerText(),/CANDIDATE/);
+  assert.match(await page.locator('#observedHabitBand').innerText(),/dendrite/i);
   assert.match(await page.locator('#relativeWaterHumidity').innerText(),/98\.5/);
   assert.equal(await page.locator('#cloudBoundary').evaluate(el=>el.classList.contains('above-water')),false);
   assert.equal(await page.locator('#fieldCanvas').evaluate(el=>el.width),1024,
@@ -252,6 +253,18 @@ try{
   assert.match(await page.locator('#activeExperiment').innerText(),/history.*Compact core/);
   assert.match(await page.locator('#snapshotVersion').innerText(),/v2/);
   assert.match(await page.locator('#activeEnvironment').innerText(),/3\.00 % ice/);
+  const protocolDownloadPromise=page.waitForEvent('download');
+  await page.locator('#experimentExport').click();
+  const protocolDownload=await protocolDownloadPromise;
+  assert.match(protocolDownload.suggestedFilename(),/\.json$/);
+  const protocol=JSON.parse(await readFile(await protocolDownload.path(),'utf8'));
+  assert.equal(protocol.schema,'snowflake-observatory/experiment-export');
+  assert.equal(protocol.experiment.id,'history');
+  assert.equal(protocol.experiment.stages.length,4,'future stages remain included in protocol');
+  assert.equal(protocol.appliedSolverConfig.kinetics.basal.sigma0,.01,
+    'basal nucleation barrier really enters reproducible physical config');
+  assert.equal(protocol.appliedSolverConfig.localHeight,true);
+  assert.equal(protocol.numerical.openDirichletBoundary,true);
   await page.locator('#step').click();
   assert.equal(await page.locator('#errorOverlay').isVisible(),false);
   // Editing the configuration clears the staged multi-regime timeline.
